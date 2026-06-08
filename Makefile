@@ -19,6 +19,10 @@ fix: .prepare ## Lint and fix violations
 	@go fmt ./...
 	@golangci-lint run --fix ./...
 
+.PHONY: build
+build: lint ## Build application
+	@go build -o rest-pty .
+
 .PHONY: test
 test: .prepare ## Run unit tests
 	go test --count 1 -timeout 60s -short ./...
