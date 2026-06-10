@@ -41,6 +41,7 @@ func TestRedisQueueBasicPushPop(t *testing.T) {
 	defer func() {
 		assert.Nil(client.DeleteQueue(utCtx, testQueue))
 	}()
+	assert.Equal(testQueue, uut.QueueName())
 
 	// Case 0: an empty queue returns nothing for peak and pop operations
 	{
@@ -296,6 +297,24 @@ func TestRedisQueueBasicPopAndMove(t *testing.T) {
 		assert.Nil(err)
 		verifyPayload(left, testEntries[4].payload)
 	}
+
+	// Pop-and-move on an empty source queue returns no message and no error
+	{
+		testQueue2 := uuid.NewString()
+		queue2, err := client.GetQueueHandle(utCtx, testQueue2)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteQueue(utCtx, testQueue2))
+		}()
+
+		moved, err := queue2.PopRightAndMove(utCtx, testQueue0, false, false, nil)
+		assert.Nil(err)
+		assert.Nil(moved)
+
+		moved, err = queue2.PopLeftAndMove(utCtx, testQueue0, false, false, nil)
+		assert.Nil(err)
+		assert.Nil(moved)
+	}
 }
 
 func TestRedisQueueBlockingPopAndMove(t *testing.T) {
@@ -457,4 +476,170 @@ func TestRedisQueueRemoveEntries(t *testing.T) {
 	length, err = uut.Length(utCtx)
 	assert.Nil(err)
 	assert.Equal(uint64(0), length)
+}
+
+func TestRedisQueueBlockingOpsTimeout(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	// Source queue is left empty for the entire test, so every blocking operation must wait
+	// out its timeout
+	testQueue := uuid.NewString()
+	uut, err := client.GetQueueHandle(utCtx, testQueue)
+	assert.Nil(err)
+	defer func() {
+		assert.Nil(client.DeleteQueue(utCtx, testQueue))
+	}()
+
+	// Destination queue for the pop-and-move operations
+	destQueue := uuid.NewString()
+	dest, err := client.GetQueueHandle(utCtx, destQueue)
+	assert.Nil(err)
+	defer func() {
+		assert.Nil(client.DeleteQueue(utCtx, destQueue))
+	}()
+
+	const timeout = time.Second
+
+	// runTimeout invokes a blocking operation against the empty queue and asserts it blocks
+	// for at least the timeout before returning no message and no error.
+	runTimeout := func(name string, op func() (models.IPCMessageEnvelope, error)) {
+		start := time.Now()
+		msg, err := op()
+		elapsed := time.Since(start)
+
+		assert.Nil(err, name)
+		assert.Nil(msg, name)
+		// the operation must have actually blocked for roughly the requested timeout rather
+		// than returning immediately
+		assert.GreaterOrEqual(elapsed, timeout, name)
+	}
+
+	maxWait := timeout
+
+	// PopLeft blocks then times out
+	runTimeout("PopLeft", func() (models.IPCMessageEnvelope, error) {
+		return uut.PopLeft(utCtx, true, &maxWait)
+	})
+
+	// PopRight blocks then times out
+	runTimeout("PopRight", func() (models.IPCMessageEnvelope, error) {
+		return uut.PopRight(utCtx, true, &maxWait)
+	})
+
+	// PopLeftAndMove blocks then times out, leaving the destination untouched
+	runTimeout("PopLeftAndMove", func() (models.IPCMessageEnvelope, error) {
+		return uut.PopLeftAndMove(utCtx, destQueue, false, true, &maxWait)
+	})
+
+	// PopRightAndMove blocks then times out, leaving the destination untouched
+	runTimeout("PopRightAndMove", func() (models.IPCMessageEnvelope, error) {
+		return uut.PopRightAndMove(utCtx, destQueue, false, true, &maxWait)
+	})
+
+	// Nothing was ever moved into the destination queue
+	destLength, err := dest.Length(utCtx)
+	assert.Nil(err)
+	assert.Equal(uint64(0), destLength)
+}
+
+func TestRedisQueueRemoveCornerCases(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	// drainAndVerify pops every entry off the queue from the left and asserts they match the
+	// expected payloads in order, leaving the queue empty.
+	drainAndVerify := func(uut redis.Queue, expected []string) {
+		for _, want := range expected {
+			msg, err := uut.PopLeft(utCtx, false, nil)
+			assert.Nil(err)
+			assert.NotNil(msg)
+			if msg == nil {
+				continue
+			}
+			payload, err := msg.StringPayload()
+			assert.Nil(err)
+			assert.Equal(want, payload)
+		}
+
+		length, err := uut.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(uint64(0), length)
+	}
+
+	// Case 0: removing a message that is not in the queue. The queue is left unchanged, and
+	// `Remove` reports an error since nothing was deleted.
+	{
+		testQueue := uuid.NewString()
+		uut, err := client.GetQueueHandle(utCtx, testQueue)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteQueue(utCtx, testQueue))
+		}()
+
+		// Insert 5 distinct entries
+		entries := make([]string, 5)
+		for i := range entries {
+			entries[i] = uuid.NewString()
+			_, err := uut.PushRight(utCtx, testIPCMessage{payload: entries[i]})
+			assert.Nil(err)
+		}
+
+		// Remove a message that was never inserted. Nothing is deleted, so `Remove` errors.
+		err = uut.Remove(utCtx, testIPCMessage{payload: uuid.NewString()})
+		assert.Error(err)
+
+		// The queue length is unchanged
+		length, err := uut.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(uint64(5), length)
+
+		// All 5 original entries are still present, in order
+		drainAndVerify(uut, entries)
+	}
+
+	// Case 1: removing a message that appears more than once. `Remove` uses LREM with count 0,
+	// which deletes every matching occurrence.
+	{
+		testQueue := uuid.NewString()
+		uut, err := client.GetQueueHandle(utCtx, testQueue)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteQueue(utCtx, testQueue))
+		}()
+
+		// Insert 5 entries where the entries at index 1 and index 3 share the same payload.
+		// Queue is now [m0, dup, m2, dup, m4] left to right.
+		m0 := uuid.NewString()
+		dup := uuid.NewString()
+		m2 := uuid.NewString()
+		m4 := uuid.NewString()
+		for _, payload := range []string{m0, dup, m2, dup, m4} {
+			_, err := uut.PushRight(utCtx, testIPCMessage{payload: payload})
+			assert.Nil(err)
+		}
+
+		// Removing the duplicated payload deletes both occurrences (index 1 and index 3)
+		err = uut.Remove(utCtx, testIPCMessage{payload: dup})
+		assert.Nil(err)
+
+		length, err := uut.Length(utCtx)
+		assert.Nil(err)
+		assert.Equal(uint64(3), length)
+
+		// The remaining entries are m0, m2, m4 in order
+		drainAndVerify(uut, []string{m0, m2, m4})
+	}
 }
