@@ -154,7 +154,7 @@ func (b *ringBuffer) Write(ctx context.Context, data []byte) (int64, error) {
 		ctx, b.core, []string{b.bufferNameKey, b.bufferWrittenKey}, b.capacity, data,
 	).Int64()
 	if err != nil {
-		return 0, models.REDISError{
+		return 0, models.RedisError{
 			Core: err, Message: "failed to write to buffer " + b.bufferNameKey,
 		}
 	}
@@ -196,7 +196,7 @@ func (b *ringBuffer) ReadAt(
 		ctx, b.core, []string{b.bufferNameKey, b.bufferWrittenKey}, b.capacity, offset, len(buf),
 	).Slice()
 	if err != nil {
-		return -1, 0, 0, models.REDISError{
+		return -1, 0, 0, models.RedisError{
 			Core: err, Message: "failed to read from buffer " + b.bufferNameKey,
 		}
 	}
@@ -221,7 +221,7 @@ func (b *ringBuffer) Total(ctx context.Context) (int64, error) {
 		return 0, nil // key not created yet → nothing written
 	}
 	if err != nil {
-		return 0, models.REDISError{
+		return 0, models.RedisError{
 			Core: err, Message: "failed to read buffer count key " + b.bufferWrittenKey,
 		}
 	}
