@@ -1,0 +1,19 @@
+services:
+
+  rest-pty-redis:
+    container_name: rest-pty-redis
+    restart: unless-stopped
+    hostname: redis
+    image: "redis:8.8-alpine"
+    command:
+      - redis-server
+      - --save 60 1
+      - --loglevel warning
+    ports:
+      - 127.0.0.1:6479:6379
+    networks:
+      - rest_pty
+
+networks:
+  rest_pty:
+    name: rest-pty
