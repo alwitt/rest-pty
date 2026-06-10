@@ -406,62 +406,6 @@ func TestRedisRingBufferCapacityLimits(t *testing.T) {
 	}
 }
 
-func TestRedisRingBufferWriterInterface(t *testing.T) {
-	assert := assert.New(t)
-	log.SetLevel(log.DebugLevel)
-
-	utCtx := context.Background()
-
-	redisConnect := getRedisConnectParamForTest(assert)
-	client, err := redis.NewClient(utCtx, redisConnect)
-	assert.Nil(err)
-
-	testBuffer := uuid.NewString()
-
-	uut, err := client.GetRingBuffer(utCtx, testBuffer, 100)
-	assert.Nil(err)
-	defer func() {
-		assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
-	}()
-
-	// Wrap the buffer so it can be driven through the `io.Writer` interface
-	var writer io.Writer = &redis.ContextRingBuffer{WorkingCtx: utCtx, Buffer: uut}
-
-	// First write: 50 bytes of 'A'
-	dataA := bytes.Repeat([]byte("A"), 50)
-	{
-		written, err := writer.Write(dataA)
-		assert.Nil(err)
-		assert.Equal(len(dataA), written)
-	}
-
-	// Second write: 50 bytes of 'B'
-	dataB := bytes.Repeat([]byte("B"), 50)
-	{
-		written, err := writer.Write(dataB)
-		assert.Nil(err)
-		assert.Equal(len(dataB), written)
-	}
-
-	// Read back 100 bytes and verify both writes landed in order
-	{
-		lclCtx, lclCtxCancel := context.WithTimeout(utCtx, time.Millisecond*30)
-		defer lclCtxCancel()
-
-		recvBuf := make([]byte, 100)
-
-		actualOffset, read, total, err := uut.ReadAt(lclCtx, recvBuf, 0)
-		assert.Nil(err)
-
-		assert.Equal(0, int(actualOffset))
-		assert.Equal(100, read)
-		assert.Equal(100, int(total))
-
-		expected := append(bytes.Repeat([]byte("A"), 50), bytes.Repeat([]byte("B"), 50)...)
-		assert.Equal(expected, recvBuf[:read])
-	}
-}
-
 func TestRedisRingBufferWriteCountTrack(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
@@ -686,6 +630,82 @@ func TestRedisRingBufferLongWrites(t *testing.T) {
 
 	// Both phases observed the same bytes in the same order
 	assert.Equal(writeHash.Sum(nil), readHash.Sum(nil))
+}
+
+func TestRedisRingBufferAsStdReadWrite(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	testBuffer := uuid.NewString()
+
+	uut, err := client.GetRingBuffer(utCtx, testBuffer, 1000)
+	assert.Nil(err)
+	defer func() {
+		assert.Nil(client.DeleteRingBuffer(utCtx, testBuffer))
+	}()
+
+	// Wrap the buffer behind the standard `io.ReadWriteCloser` interface
+	rwc := uut.AsReadWriteCloser(utCtx, time.Millisecond)
+
+	// Prepare 32768 bytes of random test data
+	testData := make([]byte, 32768)
+	_, err = rand.Read(testData)
+	assert.Nil(err)
+
+	// Track the data hash across the writing and reading phases independently. As the
+	// reader keeps pace with the writer (512 byte reads against a 1000 byte buffer), every
+	// byte written should be read back exactly once and in order.
+	writeHash := sha1.New()
+	readHash := sha1.New()
+
+	const chunkSize = 512
+	for start := 0; start < len(testData); start += chunkSize {
+		chunk := testData[start : start+chunkSize]
+
+		// Writing phase: update the write hash and push the chunk through `io.Writer`
+		{
+			written, err := rwc.Write(chunk)
+			assert.Nil(err)
+			assert.Equal(len(chunk), written)
+
+			_, _ = writeHash.Write(chunk)
+		}
+
+		// Reading phase: pull the chunk back through `io.Reader`. The wrapper blocks until
+		// data is available, so a single read returns the freshly written chunk. `io.ReadFull`
+		// guards against a short read returning fewer than `chunkSize` bytes.
+		{
+			recvBuf := make([]byte, chunkSize)
+
+			read, err := io.ReadFull(rwc, recvBuf)
+			assert.Nil(err)
+			assert.Equal(chunkSize, read)
+
+			_, _ = readHash.Write(recvBuf[:read])
+		}
+	}
+
+	// Both phases observed the same bytes in the same order
+	assert.Equal(writeHash.Sum(nil), readHash.Sum(nil))
+
+	// Closing the wrapper cancels its working context: subsequent reads report a clean EOF
+	// and writes report a closed pipe.
+	assert.Nil(rwc.Close())
+	{
+		read, err := rwc.Read(make([]byte, chunkSize))
+		assert.Equal(0, read)
+		assert.ErrorIs(err, io.EOF)
+
+		written, err := rwc.Write([]byte("data after close"))
+		assert.Equal(0, written)
+		assert.ErrorIs(err, io.ErrClosedPipe)
+	}
 }
 
 func TestRedisRingBufferEmptyReadBuffer(t *testing.T) {

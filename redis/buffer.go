@@ -3,6 +3,9 @@ package redis
 
 import (
 	"context"
+	"errors"
+	"io"
+	"time"
 
 	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/models"
@@ -115,6 +118,20 @@ type RingBuffer interface {
 			@returns `REDISError` in case of failure
 	*/
 	Total(ctx context.Context) (int64, error)
+
+	/*
+		AsReadWriteCloser create a wrapper around this buffer so it presents an `io.ReadWriteCloser`
+		interface, allowing this buffer to be used other standard IO helper functions.
+
+			@param parentCtx context.Context - the parent execution context for this buffer
+			    which allows for clean execution control of the buffer while maintaining
+			    standard interface.
+			@param dataCheckInt time.Duration - as the buffer `ReadAt` API is non-blocking,
+			    this set the interval of the internal polling loop for available data. Minimum
+			    value is 1ms.
+			@returns interface complaint with `io.ReadWriteCloser`
+	*/
+	AsReadWriteCloser(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser
 }
 
 type ringBuffer struct {
@@ -160,18 +177,6 @@ func (b *ringBuffer) Write(ctx context.Context, data []byte) (int64, error) {
 	}
 
 	return written, nil
-}
-
-// ContextRingBuffer wrapper around `RingBuffer` which implements `io.Writer`
-type ContextRingBuffer struct {
-	WorkingCtx context.Context
-	Buffer     RingBuffer
-}
-
-// Write implement the `io.Writer` interface
-func (b *ContextRingBuffer) Write(data []byte) (int, error) {
-	written, err := b.Buffer.Write(b.WorkingCtx, data)
-	return int(written), err
 }
 
 /*
@@ -226,4 +231,101 @@ func (b *ringBuffer) Total(ctx context.Context) (int64, error) {
 		}
 	}
 	return n, nil
+}
+
+/*
+AsReadWriteCloser create a wrapper around this buffer so it presents an `io.ReadWriteCloser`
+interface, allowing this buffer to be used other standard IO helper functions.
+
+	@param parentCtx context.Context - the parent execution context for this buffer
+	    which allows for clean execution control of the buffer while maintaining
+	    standard interface.
+	@param dataCheckInt time.Duration - as the buffer `ReadAt` API is non-blocking,
+	    this set the interval of the internal polling loop for available data. Minimum
+	    value is 1ms.
+	@returns interface complaint with `io.ReadWriteCloser`
+*/
+func (b *ringBuffer) AsReadWriteCloser(
+	parentCtx context.Context, dataCheckInt time.Duration,
+) io.ReadWriteCloser {
+	instanceCtx, instanceCtxCancel := context.WithCancel(parentCtx)
+	return &contextRingBuffer{
+		WorkingCtx:       instanceCtx,
+		WorkingCtxCancel: instanceCtxCancel,
+		Buffer:           b,
+		StreamReadPtr:    0,
+		DataCheckInt:     dataCheckInt,
+	}
+}
+
+// contextRingBuffer wrapper around `RingBuffer` which implements `io.ReadWriteCloser`
+type contextRingBuffer struct {
+	WorkingCtx       context.Context
+	WorkingCtxCancel context.CancelFunc
+	Buffer           RingBuffer
+
+	// StreamReadPtr starting streaming data read pointer
+	StreamReadPtr int64
+	// DataCheckInt to support the `io.Reader` interface, the `Read` function will loop repeatedly
+	// until data is available in the buffer, or working context timed out. Minimum value is 1ms.
+	DataCheckInt time.Duration
+}
+
+// Close implement the `io.Closer` interface
+func (b *contextRingBuffer) Close() error {
+	if b.WorkingCtxCancel != nil {
+		b.WorkingCtxCancel()
+	}
+	return nil
+}
+
+// Write implement the `io.Writer` interface
+func (b *contextRingBuffer) Write(data []byte) (int, error) {
+	if err := b.WorkingCtx.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return 0, io.ErrClosedPipe
+		}
+		return 0, err // surface deadline/other
+	}
+	written, err := b.Buffer.Write(b.WorkingCtx, data)
+	return int(written), err
+}
+
+// Read implement the `io.Reader` interface
+func (b *contextRingBuffer) Read(buf []byte) (int, error) {
+	received := 0
+
+	// No receive buffer
+	if len(buf) == 0 {
+		return received, nil
+	}
+
+	for {
+		// Check whether context expired
+		if err := b.WorkingCtx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return received, io.EOF // clean shutdown
+			}
+			return received, err // surface deadline/other
+		}
+
+		actualOffset, readCount, _, err := b.Buffer.ReadAt(b.WorkingCtx, buf, b.StreamReadPtr)
+		if err != nil {
+			return received, err
+		}
+
+		if readCount > 0 {
+			b.StreamReadPtr = actualOffset + int64(readCount)
+			received = readCount
+			break
+		}
+		// Wait and check again for available data
+		waitFor := b.DataCheckInt
+		if waitFor < time.Millisecond {
+			waitFor = time.Millisecond
+		}
+		time.Sleep(waitFor)
+	}
+
+	return received, nil
 }
