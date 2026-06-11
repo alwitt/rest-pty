@@ -68,11 +68,11 @@ func TestRedisQueueBasicPushPop(t *testing.T) {
 	{
 		// Push message 1 on the left, then message 2 on the right. The queue is now
 		// [message 1, message 2] from left to right.
-		length, err := uut.PushLeft(utCtx, testMsg1)
+		length, err := uut.PushLeft(utCtx, testMsg1, nil)
 		assert.Nil(err)
 		assert.Equal(uint64(1), length)
 
-		length, err = uut.PushRight(utCtx, testMsg2)
+		length, err = uut.PushRight(utCtx, testMsg2, nil)
 		assert.Nil(err)
 		assert.Equal(uint64(2), length)
 
@@ -116,7 +116,7 @@ func TestRedisQueueBasicPushPop(t *testing.T) {
 		assert.Equal(uint64(1), baseLength)
 
 		for i := 1; i <= 10; i++ {
-			length, err := uut.PushRight(utCtx, testIPCMessage{payload: uuid.NewString()})
+			length, err := uut.PushRight(utCtx, testIPCMessage{payload: uuid.NewString()}, nil)
 			assert.Nil(err)
 			assert.Equal(baseLength+uint64(i), length)
 
@@ -183,7 +183,7 @@ func TestRedisQueueBlockingPop(t *testing.T) {
 		for i := 0; i < messageCount; i++ {
 			msg := testIPCMessage{payload: uuid.NewString()}
 			expected = append(expected, msg.payload)
-			_, err := uut.PushRight(utCtx, msg)
+			_, err := uut.PushRight(utCtx, msg, nil)
 			assert.Nil(err)
 			time.Sleep(writeInterval)
 		}
@@ -250,7 +250,7 @@ func TestRedisQueueBasicPopAndMove(t *testing.T) {
 	testEntries := make([]testIPCMessage, 5)
 	for i := range testEntries {
 		testEntries[i] = testIPCMessage{payload: uuid.NewString()}
-		_, err := queue0.PushRight(utCtx, testEntries[i])
+		_, err := queue0.PushRight(utCtx, testEntries[i], nil)
 		assert.Nil(err)
 	}
 
@@ -382,7 +382,7 @@ func TestRedisQueueBlockingPopAndMove(t *testing.T) {
 		for i := 0; i < messageCount; i++ {
 			msg := testIPCMessage{payload: uuid.NewString()}
 			expected = append(expected, msg.payload)
-			_, err := queue0.PushRight(utCtx, msg)
+			_, err := queue0.PushRight(utCtx, msg, nil)
 			assert.Nil(err)
 			time.Sleep(writeInterval)
 		}
@@ -449,7 +449,7 @@ func TestRedisQueueRemoveEntries(t *testing.T) {
 	testEntries := make([]testIPCMessage, 5)
 	for i := range testEntries {
 		testEntries[i] = testIPCMessage{payload: uuid.NewString()}
-		_, err := uut.PushRight(utCtx, testEntries[i])
+		_, err := uut.PushRight(utCtx, testEntries[i], nil)
 		assert.Nil(err)
 	}
 
@@ -549,6 +549,73 @@ func TestRedisQueueBlockingOpsTimeout(t *testing.T) {
 	assert.Equal(uint64(0), destLength)
 }
 
+func TestRedisQueueMessageTimeout(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	redisConnect := getRedisConnectParamForTest(assert)
+	client, err := redis.NewClient(utCtx, redisConnect)
+	assert.Nil(err)
+
+	const ttl = time.Millisecond * 30
+	// wait comfortably past the TTL before re-checking, so the key has certainly expired
+	const expireWait = time.Millisecond * 35
+
+	// runScenario pushes a single message via `push` with a TTL, verifies it is recorded, then
+	// waits out the TTL and verifies the queue key has auto-deleted (peak returns nothing).
+	runScenario := func(
+		push func(q redis.Queue, msg models.IPCMessageEnvelope, ttl *time.Duration) (uint64, error),
+	) {
+		testQueue := uuid.NewString()
+		uut, err := client.GetQueueHandle(utCtx, testQueue)
+		assert.Nil(err)
+		defer func() {
+			assert.Nil(client.DeleteQueue(utCtx, testQueue))
+		}()
+
+		// Push a single message carrying a TTL
+		msg := testIPCMessage{payload: uuid.NewString()}
+		ttlVal := ttl
+		length, err := push(uut, msg, &ttlVal)
+		assert.Nil(err)
+		assert.Equal(uint64(1), length)
+
+		// The message is present immediately after the push
+		left, err := uut.PeakLeft(utCtx)
+		assert.Nil(err)
+		assert.NotNil(left)
+		payload, err := left.StringPayload()
+		assert.Nil(err)
+		assert.Equal(msg.payload, payload)
+
+		// After the TTL elapses the key auto-deletes, so the queue is empty again
+		time.Sleep(expireWait)
+		left, err = uut.PeakLeft(utCtx)
+		assert.Nil(err)
+		assert.Nil(left)
+	}
+
+	// Case 0: TTL applied via PushRight
+	{
+		runScenario(func(
+			q redis.Queue, msg models.IPCMessageEnvelope, ttl *time.Duration,
+		) (uint64, error) {
+			return q.PushRight(utCtx, msg, ttl)
+		})
+	}
+
+	// Case 1: TTL applied via PushLeft
+	{
+		runScenario(func(
+			q redis.Queue, msg models.IPCMessageEnvelope, ttl *time.Duration,
+		) (uint64, error) {
+			return q.PushLeft(utCtx, msg, ttl)
+		})
+	}
+}
+
 func TestRedisQueueRemoveCornerCases(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
@@ -593,7 +660,7 @@ func TestRedisQueueRemoveCornerCases(t *testing.T) {
 		entries := make([]string, 5)
 		for i := range entries {
 			entries[i] = uuid.NewString()
-			_, err := uut.PushRight(utCtx, testIPCMessage{payload: entries[i]})
+			_, err := uut.PushRight(utCtx, testIPCMessage{payload: entries[i]}, nil)
 			assert.Nil(err)
 		}
 
@@ -627,7 +694,7 @@ func TestRedisQueueRemoveCornerCases(t *testing.T) {
 		m2 := uuid.NewString()
 		m4 := uuid.NewString()
 		for _, payload := range []string{m0, dup, m2, dup, m4} {
-			_, err := uut.PushRight(utCtx, testIPCMessage{payload: payload})
+			_, err := uut.PushRight(utCtx, testIPCMessage{payload: payload}, nil)
 			assert.Nil(err)
 		}
 

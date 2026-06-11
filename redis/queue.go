@@ -22,6 +22,30 @@ if len == 0 then return false end
 return redis.call('LINDEX', KEYS[1], len - 1)`,
 )
 
+// pushRightScript atomically RPUSH a message and, when a TTL is supplied, arm an expiry
+// on the list key only if it has none yet (NX). Bundling push + PEXPIRE guarantees a reader
+// can never observe the key in a TTL-less window after it was first created.
+var pushRightScript = redis.NewScript(
+	`-- KEYS[1]=queue ; ARGV[1]=payload, ARGV[2]=ttl_epoch_ms (0 = no expiry)
+local len = redis.call('RPUSH', KEYS[1], ARGV[1])
+local ttl_epoch_ms = tonumber(ARGV[2])
+if ttl_epoch_ms > 0 then
+  redis.call('PEXPIREAT', KEYS[1], ttl_epoch_ms)
+end
+return len`,
+)
+
+// pushLeftScript — same as pushRightScript but inserts on the left (LPUSH).
+var pushLeftScript = redis.NewScript(
+	`-- KEYS[1]=queue ; ARGV[1]=payload, ARGV[2]=ttl_epoch_ms (0 = no expiry)
+local len = redis.call('LPUSH', KEYS[1], ARGV[1])
+local ttl_epoch_ms = tonumber(ARGV[2])
+if ttl_epoch_ms > 0 then
+  redis.call('PEXPIREAT', KEYS[1], ttl_epoch_ms)
+end
+return len`,
+)
+
 // queueMessage REDIS queue message are all represented as strings
 type queueMessage string
 
@@ -40,18 +64,24 @@ type Queue interface {
 
 			@param ctx context.Context - execution context
 			@param message models.QueueMessageEnvelope - message to insert
+			@param ttl time.Duration - if > 0, optionally set a TTL for the message.
 			@return length of queue after insert
 	*/
-	PushRight(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error)
+	PushRight(
+		ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration,
+	) (uint64, error)
 
 	/*
 		PushLeft push message into queue left
 
 			@param ctx context.Context - execution context
 			@param message models.QueueMessageEnvelope - message to insert
+			@param ttl time.Duration - if > 0, optionally set a TTL for the message.
 			@return length of queue after insert
 	*/
-	PushLeft(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error)
+	PushLeft(
+		ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration,
+	) (uint64, error)
 
 	/*
 		PopRight pop message from queue right
@@ -166,27 +196,28 @@ PushRight push message into queue right
 
 	@param ctx context.Context - execution context
 	@param message models.QueueMessageEnvelope - message to insert
+	@param ttl time.Duration - if > 0, optionally set a TTL for the message.
 	@return length of queue after insert
 */
 func (q *redisQueueImpl) PushRight(
-	ctx context.Context, message models.IPCMessageEnvelope,
+	ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration,
 ) (uint64, error) {
 	toInsert, err := message.StringPayload()
 	if err != nil {
 		return 0, models.RuntimeError{Core: err, Message: "failed to serialize the queue message"}
 	}
 
-	resp := q.core.RPush(ctx, q.queueName, toInsert)
-	if resp.Err() != nil {
-		return 0, models.RedisError{
-			Core: resp.Err(), Message: "failed to push right on queue " + q.queueName,
-		}
+	ttlEpochMS := int64(0)
+	if ttl != nil && ttl.Abs() > 0 {
+		ttlEpochMS = time.Now().UTC().Add(*ttl).UnixMilli()
 	}
 
-	length, err := resp.Uint64()
+	length, err := pushRightScript.Run(
+		ctx, q.core, []string{q.queueName}, toInsert, ttlEpochMS,
+	).Uint64()
 	if err != nil {
 		return 0, models.RedisError{
-			Core: err, Message: "queue " + q.queueName + " length not available after push",
+			Core: err, Message: "failed to push right on queue " + q.queueName,
 		}
 	}
 
@@ -198,27 +229,28 @@ PushLeft push message into queue left
 
 	@param ctx context.Context - execution context
 	@param message models.QueueMessageEnvelope - message to insert
+	@param ttl time.Duration - if > 0, optionally set a TTL for the message.
 	@return length of queue after insert
 */
 func (q *redisQueueImpl) PushLeft(
-	ctx context.Context, message models.IPCMessageEnvelope,
+	ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration,
 ) (uint64, error) {
 	toInsert, err := message.StringPayload()
 	if err != nil {
 		return 0, models.RuntimeError{Core: err, Message: "failed to serialize the queue message"}
 	}
 
-	resp := q.core.LPush(ctx, q.queueName, toInsert)
-	if resp.Err() != nil {
-		return 0, models.RedisError{
-			Core: resp.Err(), Message: "failed to push left on queue " + q.queueName,
-		}
+	ttlEpochMS := int64(0)
+	if ttl != nil && ttl.Abs() > 0 {
+		ttlEpochMS = time.Now().UTC().Add(*ttl).UnixMilli()
 	}
 
-	length, err := resp.Uint64()
+	length, err := pushLeftScript.Run(
+		ctx, q.core, []string{q.queueName}, toInsert, ttlEpochMS,
+	).Uint64()
 	if err != nil {
 		return 0, models.RedisError{
-			Core: err, Message: "queue " + q.queueName + " length not available after push",
+			Core: err, Message: "failed to push right on queue " + q.queueName,
 		}
 	}
 
