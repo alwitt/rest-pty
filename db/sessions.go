@@ -1,0 +1,415 @@
+package db
+
+import (
+	"context"
+	"errors"
+
+	"github.com/alwitt/rest-pty/models"
+	"github.com/oklog/ulid/v2"
+	"gorm.io/gorm"
+)
+
+/*
+DefineNewSession define a new session
+
+	@param ctx context.Context - execution context
+	@param name string - session name, can only contain alphanumeric characters and -
+	@param description *string - session description
+	@param command models.SessionCommand - the command to execute
+	@param outputBufferCapacity int64 - buffering capacity for holding command output history
+	@returns new session entry
+	@returns `models.ValidationError` bad data
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) DefineNewSession(
+	_ context.Context,
+	name string,
+	description *string,
+	command models.SessionCommand,
+	outputBufferCapacity int64,
+) (models.Session, error) {
+	newEntry := sessionEntry{
+		Session: models.Session{
+			ID:                   ulid.Make().String(),
+			Name:                 name,
+			Description:          description,
+			Command:              command,
+			State:                models.SessionStateIdle,
+			OutputBufferCapacity: outputBufferCapacity,
+		},
+	}
+
+	if err := d.validator.Struct(&newEntry); err != nil {
+		return models.Session{},
+			models.ValidationError{Core: err, Message: "new session entry attributes are invalid"}
+	}
+
+	if tmp := d.db.Create(&newEntry); tmp.Error != nil {
+		return models.Session{},
+			models.PersistenceError{Core: tmp.Error, Message: "failed to define new session entry"}
+	}
+
+	return newEntry.Session, nil
+}
+
+// getSessionEntryByName helper function to get a session by name
+func (d *databaseImpl) getSessionEntryByName(name string) (sessionEntry, error) {
+	var entry sessionEntry
+	tmp := d.db.Model(&sessionEntry{}).Where("name = ?", name).First(&entry)
+
+	if tmp.Error != nil {
+		if errors.Is(tmp.Error, gorm.ErrRecordNotFound) {
+			return sessionEntry{},
+				models.UnknownSessionError{Core: tmp.Error, Message: "session '" + name + "' is unknown"}
+		}
+		return sessionEntry{},
+			models.PersistenceError{Core: tmp.Error, Message: "failed to fetch session '" + name + "'"}
+	}
+
+	return entry, nil
+}
+
+/*
+GetSession fetch a session by name
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns session entry
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) GetSessionByName(_ context.Context, name string) (models.Session, error) {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return models.Session{}, err
+	}
+	return entry.Session, nil
+}
+
+// updateSessionState update session state
+func (d *databaseImpl) updateSessionState(
+	name string, newState models.SessionStateENUMType,
+) error {
+	session, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if err := session.ValidNextState(newState); err != nil {
+		return models.ConsistencyError{
+			Core: err, Message: "can't change session " + session.Name + " state",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", session.ID).Update("state", newState)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + session.Name + "'[" + session.ID + "] new state",
+		}
+	}
+
+	return nil
+}
+
+/*
+MarkSessionIdle mark a session is IDLE
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) MarkSessionIdle(_ context.Context, name string) error {
+	return d.updateSessionState(name, models.SessionStateIdle)
+}
+
+/*
+MarkSessionStarting mark a session is STARTING
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) MarkSessionStarting(_ context.Context, name string) error {
+	return d.updateSessionState(name, models.SessionStateStarting)
+}
+
+/*
+MarkSessionReady mark a session is Ready
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) MarkSessionReady(_ context.Context, name string) error {
+	return d.updateSessionState(name, models.SessionStateReady)
+}
+
+/*
+MarkSessionClaimed mark a session is CLAIMED
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) MarkSessionClaimed(_ context.Context, name string) error {
+	return d.updateSessionState(name, models.SessionStateClaimed)
+}
+
+/*
+MarkSessionStopping mark a session is STOPPING
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) MarkSessionStopping(_ context.Context, name string) error {
+	return d.updateSessionState(name, models.SessionStateStopping)
+}
+
+/*
+UpdateSessionOutputBufCapacity change the output buffer capacity of a session.
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newCap int64 - new output buffer capacity
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` session in wrong state
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionOutputBufCapacity(
+	_ context.Context, name string, newCap int64,
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return models.ConsistencyError{
+			Message: "can't change session '" + name + "' output buffer capacity outside of IDLE state",
+		}
+	}
+
+	entry.OutputBufferCapacity = newCap
+	if err := d.validator.Struct(&entry); err != nil {
+		return models.ValidationError{
+			Core: err, Message: "new session " + name + " capacity is invalid",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("io_buf_cap", newCap)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new IO capacity",
+		}
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionCommand change the session command
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newCommand models.SessionCommand - new session command
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` session in wrong state
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionCommand(
+	_ context.Context, name string, newCommand models.SessionCommand,
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return models.ConsistencyError{
+			Message: "can't change session '" + name + "' command outside of IDLE state",
+		}
+	}
+
+	entry.Command = newCommand
+	if err := d.validator.Struct(&entry); err != nil {
+		return models.ValidationError{
+			Core: err, Message: " new session " + name + " command is invalid",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("command", newCommand)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new command",
+		}
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionName change session name
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newName string - new session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionName(_ context.Context, name string, newName string) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	entry.Name = newName
+	if err := d.validator.Struct(&entry); err != nil {
+		return models.ValidationError{Core: err, Message: "new session name is invalid"}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("name", newName)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new name",
+		}
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionDescription change session description
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newDescription *string - new session description
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionDescription(
+	_ context.Context, name string, newDescription *string,
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	tmp := d.db.
+		Model(&sessionEntry{}).
+		Where("id = ?", entry.ID).
+		Update("description", newDescription)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new description",
+		}
+	}
+
+	return nil
+}
+
+/*
+DeleteSession delete a session
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) DeleteSession(_ context.Context, name string) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return models.ConsistencyError{
+			Message: "can't delete session '" + name + "' outside of IDLE state",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Delete(&sessionEntry{})
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to delete session '" + entry.Name + "'[" + entry.ID + "]",
+		}
+	}
+
+	return nil
+}
+
+/*
+ListSessions list sessions
+
+	@param ctx context.Context - execution context
+	@param filter SessionQueryFilter - query filter
+	@returns list of session according to the query filter
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) ListSessions(
+	_ context.Context, filters SessionQueryFilter,
+) ([]models.Session, error) {
+	if err := d.validator.Struct(&filters); err != nil {
+		return nil, models.ValidationError{Core: err, Message: "session query filter is invalid"}
+	}
+
+	query := d.db.Model(&sessionEntry{})
+
+	if filters.SimilarName != nil {
+		query = query.Where("name like ?", "%"+*filters.SimilarName+"%")
+	}
+
+	if len(filters.TargetStates) > 0 {
+		query = query.Where("state in ?", filters.TargetStates)
+	}
+
+	if filters.Limit != nil {
+		query = query.Limit(*filters.Limit)
+	}
+	if filters.Offset != nil {
+		query = query.Offset(*filters.Offset)
+	}
+
+	orderDirection := "asc"
+	if filters.OrderDirection != nil {
+		orderDirection = *filters.OrderDirection
+	}
+
+	if filters.OrderByName {
+		query = query.Order("name " + orderDirection)
+	} else {
+		query = query.Order("created_at " + orderDirection)
+	}
+
+	var entries []sessionEntry
+	if tmp := query.Find(&entries); tmp.Error != nil {
+		return nil, models.PersistenceError{Core: tmp.Error, Message: "failed to list sessions"}
+	}
+
+	results := make([]models.Session, 0, len(entries))
+	for _, entry := range entries {
+		results = append(results, entry.Session)
+	}
+
+	return results, nil
+}

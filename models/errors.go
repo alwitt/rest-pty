@@ -21,6 +21,25 @@ func (e ConsistencyError) Unwrap() error {
 	return e.Core
 }
 
+// UnknownSessionError a call referenced an unknown session
+type UnknownSessionError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e UnknownSessionError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e UnknownSessionError) Unwrap() error {
+	return e.Core
+}
+
 // RuntimeError general runtime error
 type RuntimeError struct {
 	Core    error
@@ -56,5 +75,43 @@ func (e RedisError) Error() string {
 
 // Unwrap implement wrapped error
 func (e RedisError) Unwrap() error {
+	return e.Core
+}
+
+// PersistenceError error encountered with persistence
+type PersistenceError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e PersistenceError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e PersistenceError) Unwrap() error {
+	return e.Core
+}
+
+// ValidationError error when data fails validation
+type ValidationError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e ValidationError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e ValidationError) Unwrap() error {
 	return e.Core
 }
