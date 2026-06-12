@@ -46,10 +46,19 @@ func test() error {
 	}
 	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }() // Best effort.
 
+	// Capture every raw byte read from stdin into a file for later inspection.
+	capture, err := os.Create("stdin-capture.bin")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = capture.Close() }() // Best effort.
+
 	// Copy stdin to the pty and the pty to stdout.
+	// Tee stdin into the capture file so we record the raw bytes (Ctrl+#, backspace,
+	// del, CR, escape sequences) without the kernel line discipline interpreting them.
 	// NOTE: The goroutine will keep reading until the next keystroke before returning.
 	fmt.Printf("========================= Starting shell session =================================\n")
-	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	go func() { _, _ = io.Copy(io.MultiWriter(ptmx, capture), os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, ptmx)
 	fmt.Printf("========================= Ended shell session =================================\n")
 
