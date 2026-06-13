@@ -544,8 +544,8 @@ func (_c *Queue_PopRightAndMove_Call) RunAndReturn(run func(ctx context.Context,
 }
 
 // PushLeft provides a mock function for the type Queue
-func (_mock *Queue) PushLeft(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error) {
-	ret := _mock.Called(ctx, message)
+func (_mock *Queue) PushLeft(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration) (uint64, error) {
+	ret := _mock.Called(ctx, message, ttl)
 
 	if len(ret) == 0 {
 		panic("no return value specified for PushLeft")
@@ -553,16 +553,16 @@ func (_mock *Queue) PushLeft(ctx context.Context, message models.IPCMessageEnvel
 
 	var r0 uint64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope) (uint64, error)); ok {
-		return returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) (uint64, error)); ok {
+		return returnFunc(ctx, message, ttl)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope) uint64); ok {
-		r0 = returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) uint64); ok {
+		r0 = returnFunc(ctx, message, ttl)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, models.IPCMessageEnvelope) error); ok {
-		r1 = returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) error); ok {
+		r1 = returnFunc(ctx, message, ttl)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -577,11 +577,12 @@ type Queue_PushLeft_Call struct {
 // PushLeft is a helper method to define mock.On call
 //   - ctx context.Context
 //   - message models.IPCMessageEnvelope
-func (_e *Queue_Expecter) PushLeft(ctx interface{}, message interface{}) *Queue_PushLeft_Call {
-	return &Queue_PushLeft_Call{Call: _e.mock.On("PushLeft", ctx, message)}
+//   - ttl *time.Duration
+func (_e *Queue_Expecter) PushLeft(ctx interface{}, message interface{}, ttl interface{}) *Queue_PushLeft_Call {
+	return &Queue_PushLeft_Call{Call: _e.mock.On("PushLeft", ctx, message, ttl)}
 }
 
-func (_c *Queue_PushLeft_Call) Run(run func(ctx context.Context, message models.IPCMessageEnvelope)) *Queue_PushLeft_Call {
+func (_c *Queue_PushLeft_Call) Run(run func(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration)) *Queue_PushLeft_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -591,9 +592,14 @@ func (_c *Queue_PushLeft_Call) Run(run func(ctx context.Context, message models.
 		if args[1] != nil {
 			arg1 = args[1].(models.IPCMessageEnvelope)
 		}
+		var arg2 *time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(*time.Duration)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -604,14 +610,14 @@ func (_c *Queue_PushLeft_Call) Return(v uint64, err error) *Queue_PushLeft_Call 
 	return _c
 }
 
-func (_c *Queue_PushLeft_Call) RunAndReturn(run func(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error)) *Queue_PushLeft_Call {
+func (_c *Queue_PushLeft_Call) RunAndReturn(run func(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration) (uint64, error)) *Queue_PushLeft_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // PushRight provides a mock function for the type Queue
-func (_mock *Queue) PushRight(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error) {
-	ret := _mock.Called(ctx, message)
+func (_mock *Queue) PushRight(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration) (uint64, error) {
+	ret := _mock.Called(ctx, message, ttl)
 
 	if len(ret) == 0 {
 		panic("no return value specified for PushRight")
@@ -619,16 +625,16 @@ func (_mock *Queue) PushRight(ctx context.Context, message models.IPCMessageEnve
 
 	var r0 uint64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope) (uint64, error)); ok {
-		return returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) (uint64, error)); ok {
+		return returnFunc(ctx, message, ttl)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope) uint64); ok {
-		r0 = returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) uint64); ok {
+		r0 = returnFunc(ctx, message, ttl)
 	} else {
 		r0 = ret.Get(0).(uint64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, models.IPCMessageEnvelope) error); ok {
-		r1 = returnFunc(ctx, message)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, models.IPCMessageEnvelope, *time.Duration) error); ok {
+		r1 = returnFunc(ctx, message, ttl)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -643,11 +649,12 @@ type Queue_PushRight_Call struct {
 // PushRight is a helper method to define mock.On call
 //   - ctx context.Context
 //   - message models.IPCMessageEnvelope
-func (_e *Queue_Expecter) PushRight(ctx interface{}, message interface{}) *Queue_PushRight_Call {
-	return &Queue_PushRight_Call{Call: _e.mock.On("PushRight", ctx, message)}
+//   - ttl *time.Duration
+func (_e *Queue_Expecter) PushRight(ctx interface{}, message interface{}, ttl interface{}) *Queue_PushRight_Call {
+	return &Queue_PushRight_Call{Call: _e.mock.On("PushRight", ctx, message, ttl)}
 }
 
-func (_c *Queue_PushRight_Call) Run(run func(ctx context.Context, message models.IPCMessageEnvelope)) *Queue_PushRight_Call {
+func (_c *Queue_PushRight_Call) Run(run func(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration)) *Queue_PushRight_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -657,9 +664,14 @@ func (_c *Queue_PushRight_Call) Run(run func(ctx context.Context, message models
 		if args[1] != nil {
 			arg1 = args[1].(models.IPCMessageEnvelope)
 		}
+		var arg2 *time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(*time.Duration)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -670,7 +682,7 @@ func (_c *Queue_PushRight_Call) Return(v uint64, err error) *Queue_PushRight_Cal
 	return _c
 }
 
-func (_c *Queue_PushRight_Call) RunAndReturn(run func(ctx context.Context, message models.IPCMessageEnvelope) (uint64, error)) *Queue_PushRight_Call {
+func (_c *Queue_PushRight_Call) RunAndReturn(run func(ctx context.Context, message models.IPCMessageEnvelope, ttl *time.Duration) (uint64, error)) *Queue_PushRight_Call {
 	_c.Call.Return(run)
 	return _c
 }

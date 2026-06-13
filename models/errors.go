@@ -59,6 +59,25 @@ func (e RuntimeError) Unwrap() error {
 	return e.Core
 }
 
+// PTYError PTY specific error
+type PTYError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e PTYError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e PTYError) Unwrap() error {
+	return e.Core
+}
+
 // RedisError error encountered with REDIS
 type RedisError struct {
 	Core    error

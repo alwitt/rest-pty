@@ -9,6 +9,7 @@ import (
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
+	"github.com/go-playground/validator/v10"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm/logger"
@@ -81,11 +82,18 @@ func TestDBCreateSession(t *testing.T) {
 		))
 	}
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Case 0: create test session 0
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			entry, err := dbClient.DefineNewSession(
-				ctx, session0.name, session0.description, session0.command, session0.bufCapacity,
+				ctx,
+				session0.name,
+				session0.description,
+				session0.command,
+				session0.bufCapacity,
+				testDriverParams,
 			)
 			assert.Nil(err)
 			assert.Equal(session0.name, entry.Name)
@@ -101,7 +109,12 @@ func TestDBCreateSession(t *testing.T) {
 	assert.NotNil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			_, err := dbClient.DefineNewSession(
-				ctx, session0.name, session1.description, session1.command, session1.bufCapacity,
+				ctx,
+				session0.name,
+				session1.description,
+				session1.command,
+				session1.bufCapacity,
+				testDriverParams,
 			)
 			return err
 		},
@@ -111,7 +124,12 @@ func TestDBCreateSession(t *testing.T) {
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			entry, err := dbClient.DefineNewSession(
-				ctx, session1.name, session1.description, session1.command, session1.bufCapacity,
+				ctx,
+				session1.name,
+				session1.description,
+				session1.command,
+				session1.bufCapacity,
+				testDriverParams,
 			)
 			assert.Nil(err)
 			assert.Equal(session1.name, entry.Name)
@@ -143,7 +161,12 @@ func TestDBCreateSession(t *testing.T) {
 		err := uut.UseDatabaseInTransaction(
 			utCtx, func(ctx context.Context, dbClient db.Database) error {
 				_, err := dbClient.DefineNewSession(
-					ctx, testCase.name, nil, testCase.command, testCase.bufCap,
+					ctx,
+					testCase.name,
+					nil,
+					testCase.command,
+					testCase.bufCap,
+					testDriverParams,
 				)
 				return err
 			},
@@ -169,6 +192,8 @@ func TestDBUpdateSessionState(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Define a session to drive through the state machine
 	sessionName := fmt.Sprintf("test-session-%s", ulid.Make().String())
 	assert.Nil(uut.UseDatabaseInTransaction(
@@ -179,6 +204,7 @@ func TestDBUpdateSessionState(t *testing.T) {
 				nil,
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
+				testDriverParams,
 			)
 			assert.Nil(err)
 			// A newly defined session starts in the IDLE state
@@ -258,6 +284,8 @@ func TestDBUpdateBasicSessionParams(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Create a test session
 	originalName := fmt.Sprintf("test-session-%s", ulid.Make().String())
 	originalDescription := "original description"
@@ -269,6 +297,7 @@ func TestDBUpdateBasicSessionParams(t *testing.T) {
 				&originalDescription,
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
+				testDriverParams,
 			)
 			assert.Nil(err)
 			assert.Equal(originalName, entry.Name)
@@ -360,6 +389,8 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Prepare a test session
 	sessionName := fmt.Sprintf("test-session-%s", ulid.Make().String())
 	originalCommand := models.SessionCommand{Command: "echo", Arguments: []string{"hello"}}
@@ -367,7 +398,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			_, err := dbClient.DefineNewSession(
-				ctx, sessionName, nil, originalCommand, originalCapacity,
+				ctx, sessionName, nil, originalCommand, originalCapacity, testDriverParams,
 			)
 			return err
 		},
@@ -457,6 +488,119 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	assert.True(errors.As(unknownCmdErr, &unknownErr))
 }
 
+func TestDBUpdateSessionDriverParameters(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	testDB := fmt.Sprintf("/tmp/rest_pty_ut_%s.db", ulid.Make().String())
+	log.WithField("db", testDB).Debug("Test database")
+
+	uut, err := db.NewConnection(db.GetSqliteDialector(testDB), logger.Error)
+	assert.Nil(err)
+
+	// Prepare the database tables
+	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
+
+	originalDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
+	// Prepare a test session (starts IDLE)
+	sessionName := fmt.Sprintf("test-session-%s", ulid.Make().String())
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			_, err := dbClient.DefineNewSession(
+				ctx,
+				sessionName,
+				nil,
+				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
+				16384,
+				originalDriverParams,
+			)
+			return err
+		},
+	))
+
+	newDriverParams := models.SessionDriverPTYParams{DisplayRows: 60, DisplayCols: 120}
+
+	// Validator used to parse the persisted driver metadata back into typed parameters
+	validate := validator.New()
+	assert.Nil(models.RegisterWithValidator(validate))
+
+	// Case 0: the update must fail outside of the IDLE state
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.MarkSessionStarting(ctx, sessionName)
+		},
+	))
+	nonIdleErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionDriver(ctx, sessionName, newDriverParams)
+		},
+	)
+	var consistencyErr models.ConsistencyError
+	assert.True(errors.As(nonIdleErr, &consistencyErr))
+
+	// Return the session to IDLE so updates are permitted again
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.MarkSessionIdle(ctx, sessionName)
+		},
+	))
+
+	// Case 1: an unsupported driver parameter data type is rejected with a ValidationError
+	var validationErr models.ValidationError
+	badTypeErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionDriver(ctx, sessionName, "not-a-driver-params")
+		},
+	)
+	assert.True(errors.As(badTypeErr, &validationErr))
+
+	// Case 2: driver parameters with invalid attributes are rejected with a ValidationError
+	//   DisplayRows below the 30 minimum and DisplayCols below the 80 minimum
+	invalidAttrErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionDriver(
+				ctx, sessionName, models.SessionDriverPTYParams{DisplayRows: 10, DisplayCols: 20},
+			)
+		},
+	)
+	assert.True(errors.As(invalidAttrErr, &validationErr))
+
+	// Case 3: a valid update on an IDLE session succeeds
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionDriver(ctx, sessionName, newDriverParams)
+		},
+	))
+
+	// Read back the session and verify the driver parameters were recorded
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			readBack, err := dbClient.GetSessionByName(ctx, sessionName)
+			assert.Nil(err)
+			assert.Equal(models.SessionDriverTypePTY, readBack.DriverType)
+			parsed, err := readBack.ParseDriverMetadata(validate)
+			assert.Nil(err)
+			assert.IsType(models.SessionDriverPTYParams{}, parsed)
+			assert.Equal(newDriverParams, parsed)
+			return nil
+		},
+	))
+
+	// Case 4: updating an unknown session is rejected with an UnknownSessionError
+	unknownErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionDriver(
+				ctx, fmt.Sprintf("missing-%s", ulid.Make().String()), newDriverParams,
+			)
+		},
+	)
+	var unknownSessionErr models.UnknownSessionError
+	assert.True(errors.As(unknownErr, &unknownSessionErr))
+}
+
 func TestDBDeleteSession(t *testing.T) {
 	assert := assert.New(t)
 	log.SetLevel(log.DebugLevel)
@@ -472,6 +616,8 @@ func TestDBDeleteSession(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// defineSession helper to create a fresh test session
 	defineSession := func() string {
 		name := fmt.Sprintf("test-session-%s", ulid.Make().String())
@@ -483,6 +629,7 @@ func TestDBDeleteSession(t *testing.T) {
 					nil,
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
+					testDriverParams,
 				)
 				return err
 			},
@@ -575,6 +722,8 @@ func TestDBListSessions(t *testing.T) {
 	name2 := fmt.Sprintf("%s-session2", sharedPrefix)
 	name3 := fmt.Sprintf("%s-session3", sharedPrefix)
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	for _, name := range []string{name1, name2, name3} {
 		assert.Nil(uut.UseDatabaseInTransaction(
 			utCtx, func(ctx context.Context, dbClient db.Database) error {
@@ -584,6 +733,7 @@ func TestDBListSessions(t *testing.T) {
 					nil,
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
+					testDriverParams,
 				)
 				return err
 			},
@@ -668,6 +818,8 @@ func TestDBSessionInvalidStateTransitions(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Prepare a test session (starts IDLE)
 	sessionName := fmt.Sprintf("test-session-%s", ulid.Make().String())
 	assert.Nil(uut.UseDatabaseInTransaction(
@@ -678,6 +830,7 @@ func TestDBSessionInvalidStateTransitions(t *testing.T) {
 				nil,
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
+				testDriverParams,
 			)
 			return err
 		},
@@ -751,6 +904,8 @@ func TestDBListSessionsPagination(t *testing.T) {
 	// Prepare the database tables
 	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
 
+	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
 	// Define sessions with deterministic, ordered names so ordering can be verified
 	runID := ulid.Make().String()
 	names := []string{
@@ -768,6 +923,7 @@ func TestDBListSessionsPagination(t *testing.T) {
 					nil,
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
+					testDriverParams,
 				)
 				return err
 			},

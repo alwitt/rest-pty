@@ -21,6 +21,8 @@ type SessionQueryFilter struct {
 	CommonListEntryQueryFilter
 	// SimilarName filter for session whose name is similar to this, case insensitive.
 	SimilarName *string
+	// TargetDriverType fetch session using this driver type
+	TargetDriverType []models.SessionDriverTypeENUMType `validate:"omitempty,dive,session_driver_type"`
 	// TargetStates fetch session in this state
 	TargetStates []models.SessionStateENUMType `validate:"omitempty,dive,session_state_type"`
 	// OrderByName whether to order the returns by name
@@ -39,6 +41,8 @@ type Database interface {
 			@param description *string - session description
 			@param command models.SessionCommand - the command to execute
 			@param outputBufferCapacity int64 - buffering capacity for holding command output history
+			@param driverParams interface{} - session driver parameters, allowed types are:
+			    * SessionDriverPTYParams
 			@returns new session entry
 			@returns `models.ValidationError` bad data
 			@returns `models.PersistenceError` persistence layer failure
@@ -49,6 +53,7 @@ type Database interface {
 		description *string,
 		command models.SessionCommand,
 		outputBufferCapacity int64,
+		driverParams interface{},
 	) (models.Session, error)
 
 	/*
@@ -144,6 +149,21 @@ type Database interface {
 			@returns `models.PersistenceError` persistence layer failure
 	*/
 	UpdateSessionCommand(ctx context.Context, name string, newCommand models.SessionCommand) error
+
+	/*
+		UpdateSessionDriver change the session driver parameters
+
+		This can only be performed on IDLE sessions.
+
+			@param ctx context.Context - execution context
+			@param name string - session name
+			@param driverParams interface{} - new session driver parameters
+			@returns `models.UnknownSessionError` if session is unknown
+			@returns `models.ConsistencyError` session in wrong state
+			@returns `models.ValidationError` new driver parameters are not valid
+			@returns `models.PersistenceError` persistence layer failure
+	*/
+	UpdateSessionDriver(ctx context.Context, name string, driverParams interface{}) error
 
 	/*
 		UpdateSessionName change session name

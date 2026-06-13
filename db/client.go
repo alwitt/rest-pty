@@ -64,7 +64,6 @@ NewConnection define a new SQL client
 
 	@param dbDialector gorm.Dialector - GORM dialector
 	@param dbLogLevel logger.LogLevel - SQL log level
-	@param accessControl authorize.PolicyEngine - AC policy engine
 	@return new client
 */
 func NewConnection(

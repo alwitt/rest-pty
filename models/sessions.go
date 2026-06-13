@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/go-playground/validator/v10"
+	"gorm.io/datatypes"
 )
 
 // SessionCommand the command being executed by the session
@@ -53,6 +56,17 @@ const (
 	SessionStateStopping SessionStateENUMType = "STOPPING"
 )
 
+// SessionDriverTypeENUMType session driver type ENUM type
+type SessionDriverTypeENUMType string
+
+const (
+	// SessionDriverTypePTY using PTY as session driver
+	SessionDriverTypePTY SessionDriverTypeENUMType = "PTY"
+
+	// SessionDriverTypeDocker using a docker container as session driver
+	SessionDriverTypeDocker SessionDriverTypeENUMType = "DOCKER"
+)
+
 // Session one PTY session running a command with arguments
 type Session struct {
 	// ID PTY session ID
@@ -70,6 +84,12 @@ type Session struct {
 	// State of the session
 	State SessionStateENUMType `json:"state" gorm:"column:state;not null" validate:"required,session_state_type"`
 
+	// DriverType indicate which driver the session uses
+	DriverType SessionDriverTypeENUMType `json:"driver" gorm:"column:driver;not null" validate:"required,session_driver_type"`
+
+	// DriverMetadata metadata relating to the session driver
+	DriverMetadata datatypes.JSON `json:"driver_metadata,omitempty" gorm:"column:driver_metadata;default:null"`
+
 	// OutputBufferCapacity buffering capacity for holding command output history
 	OutputBufferCapacity int64 `json:"io_buf_cap" gorm:"column:io_buf_cap;not null" validate:"required,gte=16384"`
 
@@ -77,6 +97,30 @@ type Session struct {
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt entry update timestamp
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ParseDriverMetadata parse driver metadata based on driver type
+func (s Session) ParseDriverMetadata(validator *validator.Validate) (interface{}, error) {
+	switch s.DriverType {
+	case SessionDriverTypePTY:
+		var parsed SessionDriverPTYParams
+		if err := json.Unmarshal(s.DriverMetadata, &parsed); err != nil {
+			return nil, fmt.Errorf("session '%s' driver metadata parse failed [%w]", s.Name, err)
+		}
+		return parsed, validator.Struct(&parsed)
+
+	default:
+		return nil, fmt.Errorf("unsupported session driver type '%s'", s.DriverType)
+	}
+}
+
+// SessionDriverPTYParams parameters for PTY session drivers
+type SessionDriverPTYParams struct {
+	// DisplayRows PTY number of rows (in cells).
+	DisplayRows uint16 `json:"display_rows" validate:"gte=30"`
+
+	// DisplayCol PTY number of columns (in cells).
+	DisplayCols uint16 `json:"display_cols" validate:"gte=80"`
 }
 
 // ValidNextState verify the session can transition to new state

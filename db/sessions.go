@@ -2,10 +2,13 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 
 	"github.com/alwitt/rest-pty/models"
 	"github.com/oklog/ulid/v2"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -17,6 +20,8 @@ DefineNewSession define a new session
 	@param description *string - session description
 	@param command models.SessionCommand - the command to execute
 	@param outputBufferCapacity int64 - buffering capacity for holding command output history
+	@param driverParams interface{} - session driver parameters, allowed types are:
+	    * SessionDriverPTYParams
 	@returns new session entry
 	@returns `models.ValidationError` bad data
 	@returns `models.PersistenceError` persistence layer failure
@@ -27,7 +32,25 @@ func (d *databaseImpl) DefineNewSession(
 	description *string,
 	command models.SessionCommand,
 	outputBufferCapacity int64,
+	driverParams interface{},
 ) (models.Session, error) {
+	var driverType models.SessionDriverTypeENUMType
+	switch driverParams.(type) {
+	case models.SessionDriverPTYParams:
+		driverType = models.SessionDriverTypePTY
+	default:
+		return models.Session{}, models.ValidationError{
+			Message: "unsupported session driver metadata type " + reflect.TypeOf(driverParams).String(),
+		}
+	}
+
+	if err := d.validator.Struct(driverParams); err != nil {
+		return models.Session{},
+			models.ValidationError{Core: err, Message: "new session driver parameters are invalid"}
+	}
+
+	driverMetadataStr, _ := json.Marshal(&driverParams)
+
 	newEntry := sessionEntry{
 		Session: models.Session{
 			ID:                   ulid.Make().String(),
@@ -36,6 +59,8 @@ func (d *databaseImpl) DefineNewSession(
 			Command:              command,
 			State:                models.SessionStateIdle,
 			OutputBufferCapacity: outputBufferCapacity,
+			DriverType:           driverType,
+			DriverMetadata:       datatypes.JSON(driverMetadataStr),
 		},
 	}
 
@@ -259,6 +284,71 @@ func (d *databaseImpl) UpdateSessionCommand(
 		return models.PersistenceError{
 			Core:    tmp.Error,
 			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new command",
+		}
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionDriver change the session driver parameters
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param driverParams interface{} - new session driver parameters
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` session in wrong state
+	@returns `models.ValidationError` new driver parameters are not valid
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionDriver(
+	_ context.Context, name string, driverParams interface{},
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return models.ConsistencyError{
+			Message: "can't change session '" + name + "' driver outside of IDLE state",
+		}
+	}
+
+	var driverType models.SessionDriverTypeENUMType
+	switch driverParams.(type) {
+	case models.SessionDriverPTYParams:
+		driverType = models.SessionDriverTypePTY
+	default:
+		return models.ValidationError{
+			Message: "unsupported session driver metadata type " + reflect.TypeOf(driverParams).String(),
+		}
+	}
+
+	if err := d.validator.Struct(driverParams); err != nil {
+		return models.ValidationError{Core: err, Message: "new session driver parameters are invalid"}
+	}
+
+	driverMetadataStr, _ := json.Marshal(&driverParams)
+
+	entry.DriverType = driverType
+	entry.DriverMetadata = datatypes.JSON(driverMetadataStr)
+	if err := d.validator.Struct(&entry); err != nil {
+		return models.ValidationError{
+			Core: err, Message: " new session " + name + " driver params is invalid",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).
+		Where("id = ?", entry.ID).
+		Update("driver", driverType).
+		Update("driver_metadata", datatypes.JSON(driverMetadataStr))
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new driver params",
 		}
 	}
 

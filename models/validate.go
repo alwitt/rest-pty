@@ -26,6 +26,12 @@ func RegisterWithValidator(v *validator.Validate) error {
 		return err
 	}
 
+	if err := v.RegisterValidation(
+		"session_driver_type", validateSessionDriverType,
+	); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -43,6 +49,19 @@ func validateSessionStateType(fl validator.FieldLevel) bool {
 	case SessionStateClaimed:
 		fallthrough
 	case SessionStateStopping:
+		return true
+	}
+	return false
+}
+
+func validateSessionDriverType(fl validator.FieldLevel) bool {
+	if fl.Field().Kind() != reflect.String {
+		return false
+	}
+	switch SessionDriverTypeENUMType(fl.Field().String()) {
+	case SessionDriverTypePTY:
+		fallthrough
+	case SessionDriverTypeDocker:
 		return true
 	}
 	return false

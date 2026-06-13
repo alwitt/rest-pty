@@ -2,19 +2,28 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"encoding/json"
+	"errors"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
+	"github.com/alwitt/rest-pty/models"
+	"github.com/alwitt/rest-pty/redis"
+	"github.com/alwitt/rest-pty/session"
+	"github.com/apex/log"
 	"github.com/creack/pty"
+	"github.com/oklog/ulid/v2"
 	"golang.org/x/term"
+	"gorm.io/datatypes"
 )
 
-func test() error {
+func TestPoC() error {
 	// Create arbitrary command.
 	c := exec.Command("bash")
 
@@ -32,7 +41,7 @@ func test() error {
 	go func() {
 		for range ch {
 			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				log.Printf("error resizing pty: %s", err)
+				log.Infof("error resizing pty: %s", err)
 			}
 		}
 	}()
@@ -57,16 +66,134 @@ func test() error {
 	// Tee stdin into the capture file so we record the raw bytes (Ctrl+#, backspace,
 	// del, CR, escape sequences) without the kernel line discipline interpreting them.
 	// NOTE: The goroutine will keep reading until the next keystroke before returning.
-	fmt.Printf("========================= Starting shell session =================================\n")
+	log.Warn("\n==================== [Direct PTY] Starting shell session =======================\n")
 	go func() { _, _ = io.Copy(io.MultiWriter(ptmx, capture), os.Stdin) }()
 	_, _ = io.Copy(os.Stdout, ptmx)
-	fmt.Printf("========================= Ended shell session =================================\n")
+	log.Warn("\n==================== [Direct PTY] Ended shell session =======================\n")
+
+	return nil
+}
+
+func TestPtyDriver() error {
+	log.SetLevel(log.InfoLevel)
+
+	getRedisParams := func() models.RedisConnectionConfig {
+		serverHostStr := os.Getenv("UNITTEST_REDIS_HOST")
+		if serverHostStr == "" {
+			serverHostStr = "127.0.0.1"
+		}
+		serverPortStr := os.Getenv("UNITTEST_REDIS_PORT")
+		if serverPortStr == "" {
+			serverPortStr = "6479"
+		}
+		serverDBStr := os.Getenv("UNITTEST_REDIS_DB")
+		if serverDBStr == "" {
+			serverDBStr = "1"
+		}
+
+		serverPort, err := strconv.Atoi(serverPortStr)
+		if err != nil {
+			log.WithError(err).Fatal("UNITTEST_REDIS_PORT is not int")
+		}
+
+		serverDB, err := strconv.Atoi(serverDBStr)
+		if err != nil {
+			log.WithError(err).Fatal("UNITTEST_REDIS_DB is not int")
+		}
+
+		return models.RedisConnectionConfig{
+			Host: serverHostStr, Port: uint16(serverPort), DBNumber: uint32(serverDB),
+		}
+	}
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	defer ctxCancel()
+
+	redisParams := getRedisParams()
+	redisClient, err := redis.NewClient(ctx, redisParams)
+	if err != nil {
+		return models.RuntimeError{Core: err, Message: "failed to prepare REDIS client"}
+	}
+
+	bufferCapacity := int64(32 * 1024 * 1024)
+	shellSession := models.Session{
+		ID:                   ulid.Make().String(),
+		Name:                 "poc-session-driver",
+		Command:              models.SessionCommand{Command: "bash"},
+		State:                models.SessionStateClaimed,
+		DriverType:           models.SessionDriverTypePTY,
+		DriverMetadata:       nil,
+		OutputBufferCapacity: bufferCapacity,
+	}
+	{
+		// Set PTY metadata
+		driverMeta := models.SessionDriverPTYParams{DisplayRows: 100, DisplayCols: 300}
+		driverMetadataStr, _ := json.Marshal(&driverMeta)
+		shellSession.DriverMetadata = datatypes.JSON(driverMetadataStr)
+	}
+
+	// Define the driver
+	uut, err := session.NewDriver(ctx, shellSession, redisClient, func() {
+		log.Info("Core command ended on its own; shutting down")
+		ctxCancel()
+	})
+	if err != nil {
+		return models.RuntimeError{Core: err, Message: "failed to define session driver"}
+	}
+
+	if err := uut.Start(ctx); err != nil {
+		return models.RuntimeError{Core: err, Message: "failed to start session driver"}
+	}
+	defer func() {
+		lclCtx, lclCtxCancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer lclCtxCancel()
+		if err := uut.Stop(lclCtx); err != nil {
+			log.WithError(err).Fatal("Session driver stop failed")
+		}
+	}()
+
+	// Prepare handle to REDIS buffer for INPUT and OUTPUT
+	inputBuf, err := redisClient.GetRingBuffer(ctx, uut.InputBufferName(), bufferCapacity)
+	if err != nil {
+		return models.RuntimeError{Core: err, Message: "failed to open INPUT buffer"}
+	}
+	outputBuf, err := redisClient.GetRingBuffer(ctx, uut.OutputBufferName(), bufferCapacity)
+	if err != nil {
+		return models.RuntimeError{Core: err, Message: "failed to open OUTPUT buffer"}
+	}
+
+	// Set stdin in raw mode.
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }() // Best effort.
+
+	log.Warn("\n==================== [PTY Driver] Starting shell session =======================\n")
+	go func() {
+		input := inputBuf.AsReadWriteCloser(ctx, time.Millisecond*5)
+		_, err := io.Copy(input, os.Stdin)
+		if err != nil && !errors.Is(err, syscall.EIO) && !errors.Is(err, os.ErrClosed) {
+			log.WithError(err).Fatal("INPUT piping failed")
+		}
+	}()
+	{
+		output := outputBuf.AsReadWriteCloser(ctx, time.Millisecond*5)
+		_, err := io.Copy(os.Stdout, output)
+		if err != nil {
+			return models.RuntimeError{Core: err, Message: "OUTPUT piping failed"}
+		}
+	}
+	log.Warn("\n==================== [PTY Driver] Ended shell session =======================\n")
 
 	return nil
 }
 
 func main() {
-	if err := test(); err != nil {
-		log.Fatal(err)
+	// if err := testPoC(); err != nil {
+	// 	log.WithError(err).Fatal("PTY Direct Failed")
+	// }
+	if err := TestPtyDriver(); err != nil {
+		log.WithError(err).Fatal("PTY Driver Failed")
 	}
 }

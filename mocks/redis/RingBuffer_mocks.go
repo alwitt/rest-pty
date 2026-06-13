@@ -6,6 +6,8 @@ package mockredis
 
 import (
 	"context"
+	"io"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -35,6 +37,65 @@ type RingBuffer_Expecter struct {
 
 func (_m *RingBuffer) EXPECT() *RingBuffer_Expecter {
 	return &RingBuffer_Expecter{mock: &_m.Mock}
+}
+
+// AsReadWriteCloser provides a mock function for the type RingBuffer
+func (_mock *RingBuffer) AsReadWriteCloser(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser {
+	ret := _mock.Called(parentCtx, dataCheckInt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AsReadWriteCloser")
+	}
+
+	var r0 io.ReadWriteCloser
+	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Duration) io.ReadWriteCloser); ok {
+		r0 = returnFunc(parentCtx, dataCheckInt)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(io.ReadWriteCloser)
+		}
+	}
+	return r0
+}
+
+// RingBuffer_AsReadWriteCloser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AsReadWriteCloser'
+type RingBuffer_AsReadWriteCloser_Call struct {
+	*mock.Call
+}
+
+// AsReadWriteCloser is a helper method to define mock.On call
+//   - parentCtx context.Context
+//   - dataCheckInt time.Duration
+func (_e *RingBuffer_Expecter) AsReadWriteCloser(parentCtx interface{}, dataCheckInt interface{}) *RingBuffer_AsReadWriteCloser_Call {
+	return &RingBuffer_AsReadWriteCloser_Call{Call: _e.mock.On("AsReadWriteCloser", parentCtx, dataCheckInt)}
+}
+
+func (_c *RingBuffer_AsReadWriteCloser_Call) Run(run func(parentCtx context.Context, dataCheckInt time.Duration)) *RingBuffer_AsReadWriteCloser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 time.Duration
+		if args[1] != nil {
+			arg1 = args[1].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RingBuffer_AsReadWriteCloser_Call) Return(readWriteCloser io.ReadWriteCloser) *RingBuffer_AsReadWriteCloser_Call {
+	_c.Call.Return(readWriteCloser)
+	return _c
+}
+
+func (_c *RingBuffer_AsReadWriteCloser_Call) RunAndReturn(run func(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser) *RingBuffer_AsReadWriteCloser_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // ReadAt provides a mock function for the type RingBuffer
