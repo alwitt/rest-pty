@@ -67,6 +67,19 @@ const (
 	SessionDriverTypeDocker SessionDriverTypeENUMType = "DOCKER"
 )
 
+// SessionRunnerModeTypeENUMType session runner operating mode type ENUM
+type SessionRunnerModeTypeENUMType string
+
+const (
+	// SessionRunnerModeTypeCommanded session runner operates by taking commands from user
+	// and feeding it to the session under control.
+	SessionRunnerModeTypeCommanded SessionRunnerModeTypeENUMType = "COMMANDED"
+
+	// SessionRunnerModeTypeByPassed session runner will ignore commands from user
+	// and allow user to directly interact with the session under control
+	SessionRunnerModeTypeByPassed SessionRunnerModeTypeENUMType = "BY_PASSED"
+)
+
 // Session one PTY session running a command with arguments
 type Session struct {
 	// ID PTY session ID
@@ -92,6 +105,9 @@ type Session struct {
 
 	// OutputBufferCapacity buffering capacity for holding command output history
 	OutputBufferCapacity int64 `json:"io_buf_cap" gorm:"column:io_buf_cap;not null" validate:"required,gte=16384"`
+
+	// SessionRunnerModeTypeENUMType session runner operating mode
+	RunnerMode SessionRunnerModeTypeENUMType `json:"runner_mode" gorm:"column:runner_mode;not null" validate:"required,session_runner_mode_type"`
 
 	// CreatedAt entry creation timestamp
 	CreatedAt time.Time `json:"created_at"`

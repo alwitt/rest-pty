@@ -406,6 +406,8 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 
 	newCommand := models.SessionCommand{Command: "cat", Arguments: []string{"-n"}}
 	newCapacity := int64(32768)
+	// A newly defined session starts in the COMMANDED runner mode
+	newRunMode := models.SessionRunnerModeTypeByPassed
 
 	// Change the test session to STARTING state
 	assert.Nil(uut.UseDatabaseInTransaction(
@@ -414,7 +416,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 		},
 	))
 
-	// Updating the output buffer capacity and command must fail outside of IDLE state
+	// Updating the output buffer capacity, command and runner mode must fail outside of IDLE state
 	assert.NotNil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, newCapacity)
@@ -423,6 +425,11 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	assert.NotNil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionCommand(ctx, sessionName, newCommand)
+		},
+	))
+	assert.NotNil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionRunMode(ctx, sessionName, newRunMode)
 		},
 	))
 
@@ -433,7 +440,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 		},
 	))
 
-	// Update the output buffer capacity and command, which are now permitted
+	// Update the output buffer capacity, command and runner mode, which are now permitted
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, newCapacity)
@@ -444,6 +451,11 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 			return dbClient.UpdateSessionCommand(ctx, sessionName, newCommand)
 		},
 	))
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionRunMode(ctx, sessionName, newRunMode)
+		},
+	))
 
 	// Read back the session and verify the changes occurred
 	assert.Nil(uut.UseDatabaseInTransaction(
@@ -452,6 +464,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 			assert.Nil(err)
 			assert.Equal(newCapacity, readBack.OutputBufferCapacity)
 			assert.Equal(newCommand, readBack.Command)
+			assert.Equal(newRunMode, readBack.RunnerMode)
 			return nil
 		},
 	))
@@ -470,6 +483,12 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 		},
 	)
 	assert.True(errors.As(emptyCmdErr, &validationErr))
+	badRunModeErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionRunMode(ctx, sessionName, "not-a-run-mode")
+		},
+	)
+	assert.True(errors.As(badRunModeErr, &validationErr))
 
 	// Updating an unknown session is rejected with an UnknownSessionError
 	var unknownErr models.UnknownSessionError
@@ -486,6 +505,12 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 		},
 	)
 	assert.True(errors.As(unknownCmdErr, &unknownErr))
+	unknownRunModeErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionRunMode(ctx, unknownName, newRunMode)
+		},
+	)
+	assert.True(errors.As(unknownRunModeErr, &unknownErr))
 }
 
 func TestDBUpdateSessionDriverParameters(t *testing.T) {

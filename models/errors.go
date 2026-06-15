@@ -2,6 +2,25 @@ package models
 
 import "fmt"
 
+// BadInputError malformed data input error
+type BadInputError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e BadInputError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e BadInputError) Unwrap() error {
+	return e.Core
+}
+
 // ConsistencyError a data consistency error not caused by a system failure
 type ConsistencyError struct {
 	Core    error

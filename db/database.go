@@ -137,6 +137,22 @@ type Database interface {
 	UpdateSessionOutputBufCapacity(ctx context.Context, name string, newCap int64) error
 
 	/*
+		UpdateSessionRunMode change the runner mode of a session
+
+		This can only be performed on IDLE sessions.
+
+			@param ctx context.Context - execution context
+			@param name string - session name
+			@param newMode models.SessionRunnerModeTypeENUMType - new runner mode
+			@returns `models.UnknownSessionError` if session is unknown
+			@returns `models.ConsistencyError` session in wrong state
+			@returns `models.PersistenceError` persistence layer failure
+	*/
+	UpdateSessionRunMode(
+		ctx context.Context, name string, newMode models.SessionRunnerModeTypeENUMType,
+	) error
+
+	/*
 		UpdateSessionCommand change the session command
 
 		This can only be performed on IDLE sessions.

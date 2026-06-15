@@ -61,6 +61,7 @@ func (d *databaseImpl) DefineNewSession(
 			OutputBufferCapacity: outputBufferCapacity,
 			DriverType:           driverType,
 			DriverMetadata:       datatypes.JSON(driverMetadataStr),
+			RunnerMode:           models.SessionRunnerModeTypeCommanded,
 		},
 	}
 
@@ -240,6 +241,50 @@ func (d *databaseImpl) UpdateSessionOutputBufCapacity(
 		return models.PersistenceError{
 			Core:    tmp.Error,
 			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new IO capacity",
+		}
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionRunMode change the runner mode of a session
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newMode models.SessionRunnerModeTypeENUMType - new runner mode
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `models.ConsistencyError` session in wrong state
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionRunMode(
+	ctx context.Context, name string, newMode models.SessionRunnerModeTypeENUMType,
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return models.ConsistencyError{
+			Message: "can't change session '" + name + "' runner mode outside of IDLE state",
+		}
+	}
+
+	entry.RunnerMode = newMode
+	if err := d.validator.Struct(&entry); err != nil {
+		return models.ValidationError{
+			Core: err, Message: "new session " + name + " runner mode is invalid",
+		}
+	}
+
+	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("runner_mode", newMode)
+	if tmp.Error != nil {
+		return models.PersistenceError{
+			Core:    tmp.Error,
+			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new runner mode",
 		}
 	}
 
