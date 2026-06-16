@@ -30,60 +30,11 @@ func TestIPCMessageParsing(t *testing.T) {
 		Request - Session Runner
 		****************************************************************************************/
 		{
-			name: "req-claim-session",
-			msg: `{
-				"req_id": "req-1",
-				"type": "IPC_REQ_CLAIM_SESSION",
-				"sender": "client-a",
-				"claimant": "user-1"
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageReqClaimRelated)
-				require.True(ok, "expected IPCMessageReqClaimRelated")
-				assert.Equal(models.IPCMsgTypeReqClaimSession, msg.Type)
-				assert.Equal("user-1", msg.Claimant)
-			},
-		},
-		{
-			name: "req-release-session",
-			msg: `{
-				"req_id": "req-2",
-				"type": "IPC_REQ_RELEASE_SESSION",
-				"sender": "client-a",
-				"claimant": "user-1"
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageReqClaimRelated)
-				require.True(ok, "expected IPCMessageReqClaimRelated")
-				assert.Equal(models.IPCMsgTypeReqReleaseSession, msg.Type)
-				assert.Equal("user-1", msg.Claimant)
-			},
-		},
-		{
-			name: "req-verify-claim",
-			msg: `{
-				"req_id": "req-3",
-				"type": "IPC_REQ_VERIFY_CLAIM",
-				"sender": "client-a",
-				"claimant": "user-1"
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageReqClaimRelated)
-				require.True(ok, "expected IPCMessageReqClaimRelated")
-				assert.Equal(models.IPCMsgTypeReqVerifyClaim, msg.Type)
-				assert.Equal("user-1", msg.Claimant)
-			},
-		},
-		{
 			name: "req-run-commands",
 			msg: `{
 				"req_id": "req-4",
 				"type": "IPC_REQ_RUN_COMMANDS",
 				"sender": "client-a",
-				"claimant": "user-1",
 				"commands": [
 					{"type": "TEXT", "content": "ls -la"},
 					{"type": "ENTER"}
@@ -94,7 +45,6 @@ func TestIPCMessageParsing(t *testing.T) {
 				msg, ok := parsed.(models.IPCMessageReqRunCommands)
 				require.True(ok, "expected IPCMessageReqRunCommands")
 				assert.Equal(models.IPCMsgTypeReqRunCommands, msg.Type)
-				assert.Equal("user-1", msg.Claimant)
 				require.Len(msg.Commands, 2)
 				assert.Equal(models.SessionInputCommandTypeText, msg.Commands[0].Type)
 				assert.Equal(models.SessionInputCommandTypeCR, msg.Commands[1].Type)
@@ -104,55 +54,6 @@ func TestIPCMessageParsing(t *testing.T) {
 		/****************************************************************************************
 		Response - Session Runner
 		****************************************************************************************/
-		{
-			name: "resp-claim-session",
-			msg: `{
-				"req_id": "req-1",
-				"type": "IPC_RESP_CLAIM_SESSION",
-				"sender": "runner",
-				"success": true
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageRespUniversal)
-				require.True(ok, "expected IPCMessageRespUniversal")
-				assert.Equal(models.IPCMsgTypeRespClaimSession, msg.Type)
-				assert.True(msg.Success)
-				assert.Nil(msg.ErrorMsg)
-			},
-		},
-		{
-			name: "resp-release-session",
-			msg: `{
-				"req_id": "req-2",
-				"type": "IPC_RESP_RELEASE_SESSION",
-				"sender": "runner",
-				"success": true
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageRespUniversal)
-				require.True(ok, "expected IPCMessageRespUniversal")
-				assert.Equal(models.IPCMsgTypeRespReleaseSession, msg.Type)
-				assert.True(msg.Success)
-			},
-		},
-		{
-			name: "resp-verify-claim",
-			msg: `{
-				"req_id": "req-3",
-				"type": "IPC_RESP_VERIFY_CLAIM",
-				"sender": "runner",
-				"success": true
-			}`,
-			expectErr: false,
-			check: func(parsed any) {
-				msg, ok := parsed.(models.IPCMessageRespUniversal)
-				require.True(ok, "expected IPCMessageRespUniversal")
-				assert.Equal(models.IPCMsgTypeRespVerifyClaim, msg.Type)
-				assert.True(msg.Success)
-			},
-		},
 		{
 			name: "resp-run-commands-failure",
 			msg: `{
@@ -188,17 +89,12 @@ func TestIPCMessageParsing(t *testing.T) {
 		},
 		{
 			name:      "missing-base-req-id",
-			msg:       `{"type": "IPC_REQ_CLAIM_SESSION", "sender": "client-a", "claimant": "user-1"}`,
+			msg:       `{"type": "IPC_RESP_RUN_COMMANDS", "sender": "client-a"}`,
 			expectErr: true,
 		},
 		{
 			name:      "missing-base-sender",
-			msg:       `{"req_id": "req-9", "type": "IPC_REQ_CLAIM_SESSION", "claimant": "user-1"}`,
-			expectErr: true,
-		},
-		{
-			name:      "claim-missing-claimant",
-			msg:       `{"req_id": "req-9", "type": "IPC_REQ_CLAIM_SESSION", "sender": "client-a"}`,
+			msg:       `{"req_id": "req-9", "type": "IPC_RESP_RUN_COMMANDS"}`,
 			expectErr: true,
 		},
 		{
@@ -207,7 +103,6 @@ func TestIPCMessageParsing(t *testing.T) {
 				"req_id": "req-9",
 				"type": "IPC_REQ_RUN_COMMANDS",
 				"sender": "client-a",
-				"claimant": "user-1",
 				"commands": []
 			}`,
 			expectErr: true,
@@ -218,7 +113,6 @@ func TestIPCMessageParsing(t *testing.T) {
 				"req_id": "req-9",
 				"type": "IPC_REQ_RUN_COMMANDS",
 				"sender": "client-a",
-				"claimant": "user-1",
 				"commands": [{"type": "CTRL", "content": "CC"}]
 			}`,
 			expectErr: true,

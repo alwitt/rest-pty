@@ -74,13 +74,7 @@ func validateSessionStateType(fl validator.FieldLevel) bool {
 	switch SessionStateENUMType(fl.Field().String()) {
 	case SessionStateIdle:
 		fallthrough
-	case SessionStateStarting:
-		fallthrough
 	case SessionStateReady:
-		fallthrough
-	case SessionStateClaimed:
-		fallthrough
-	case SessionStateStopping:
 		return true
 	}
 	return false
@@ -141,19 +135,7 @@ func validateIPCMessageType(fl validator.FieldLevel) bool {
 		return false
 	}
 	switch IPCMessageTypeEnumType(fl.Field().String()) {
-	case IPCMsgTypeReqClaimSession:
-		fallthrough
-	case IPCMsgTypeReqReleaseSession:
-		fallthrough
-	case IPCMsgTypeReqVerifyClaim:
-		fallthrough
 	case IPCMsgTypeReqRunCommands:
-		fallthrough
-	case IPCMsgTypeRespClaimSession:
-		fallthrough
-	case IPCMsgTypeRespReleaseSession:
-		fallthrough
-	case IPCMsgTypeRespVerifyClaim:
 		fallthrough
 	case IPCMsgTypeRespRunCommands:
 		return true

@@ -11,6 +11,12 @@ require-template-schema-exists: true
 template: testify
 template-schema: '{{.Template}}.schema.json'
 packages:
+  github.com/alwitt/rest-pty/db:
+    config:
+      all: true
   github.com/alwitt/rest-pty/redis:
+    config:
+      all: true
+  github.com/alwitt/rest-pty/session:
     config:
       all: true

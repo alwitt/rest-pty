@@ -14,38 +14,18 @@ func TestSessionStateTransitions(t *testing.T) {
 
 	allStates := []models.SessionStateENUMType{
 		models.SessionStateIdle,
-		models.SessionStateStarting,
 		models.SessionStateReady,
-		models.SessionStateClaimed,
-		models.SessionStateStopping,
 	}
 
 	// allowed defines the complete set of valid transitions for the state machine
 	allowed := map[models.SessionStateENUMType]map[models.SessionStateENUMType]bool{
 		models.SessionStateIdle: {
-			models.SessionStateIdle:     true,
-			models.SessionStateStarting: true,
-		},
-		models.SessionStateStarting: {
-			models.SessionStateIdle:     true,
-			models.SessionStateStarting: true,
-			models.SessionStateReady:    true,
+			models.SessionStateIdle:  true,
+			models.SessionStateReady: true,
 		},
 		models.SessionStateReady: {
-			models.SessionStateIdle:     true,
-			models.SessionStateReady:    true,
-			models.SessionStateClaimed:  true,
-			models.SessionStateStopping: true,
-		},
-		models.SessionStateClaimed: {
-			models.SessionStateIdle:     true,
-			models.SessionStateClaimed:  true,
-			models.SessionStateReady:    true,
-			models.SessionStateStopping: true,
-		},
-		models.SessionStateStopping: {
-			models.SessionStateIdle:     true,
-			models.SessionStateStopping: true,
+			models.SessionStateReady: true,
+			models.SessionStateIdle:  true,
 		},
 	}
 

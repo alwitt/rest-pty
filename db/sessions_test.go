@@ -226,16 +226,16 @@ func TestDBUpdateSessionState(t *testing.T) {
 	}
 
 	// Walk the basic state transition path, reading the session back after each Mark call
-	// IDLE -> STARTING -> READY -> CLAIMED -> STOPPING -> IDLE
+	// IDLE -> IDLE -> READY -> READY -> IDLE
 	transitions := []struct {
 		mark     func(ctx context.Context, dbClient db.Database) error
 		expected models.SessionStateENUMType
 	}{
 		{
 			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionStarting(ctx, sessionName)
+				return dbClient.MarkSessionIdle(ctx, sessionName)
 			},
-			expected: models.SessionStateStarting,
+			expected: models.SessionStateIdle,
 		},
 		{
 			mark: func(ctx context.Context, dbClient db.Database) error {
@@ -245,15 +245,15 @@ func TestDBUpdateSessionState(t *testing.T) {
 		},
 		{
 			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionClaimed(ctx, sessionName)
+				return dbClient.MarkSessionReady(ctx, sessionName)
 			},
-			expected: models.SessionStateClaimed,
+			expected: models.SessionStateReady,
 		},
 		{
 			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionStopping(ctx, sessionName)
+				return dbClient.MarkSessionIdle(ctx, sessionName)
 			},
-			expected: models.SessionStateStopping,
+			expected: models.SessionStateIdle,
 		},
 		{
 			mark: func(ctx context.Context, dbClient db.Database) error {
@@ -409,10 +409,10 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	// A newly defined session starts in the COMMANDED runner mode
 	newRunMode := models.SessionRunnerModeTypeByPassed
 
-	// Change the test session to STARTING state
+	// Change the test session to READY state
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.MarkSessionStarting(ctx, sessionName)
+			return dbClient.MarkSessionReady(ctx, sessionName)
 		},
 	))
 
@@ -555,7 +555,7 @@ func TestDBUpdateSessionDriverParameters(t *testing.T) {
 	// Case 0: the update must fail outside of the IDLE state
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.MarkSessionStarting(ctx, sessionName)
+			return dbClient.MarkSessionReady(ctx, sessionName)
 		},
 	))
 	nonIdleErr := uut.UseDatabaseInTransaction(
@@ -666,7 +666,7 @@ func TestDBDeleteSession(t *testing.T) {
 	nonIdleSession := defineSession()
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.MarkSessionStarting(ctx, nonIdleSession)
+			return dbClient.MarkSessionReady(ctx, nonIdleSession)
 		},
 	))
 	assert.NotNil(uut.UseDatabaseInTransaction(
@@ -766,29 +766,15 @@ func TestDBListSessions(t *testing.T) {
 	}
 
 	// Transition the sessions into distinct states
-	//   session 1 -> STARTING, session 2 -> READY, session 3 -> CLAIMED
+	//   session 1 -> IDLE (left as created), sessions 2 and 3 -> READY
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.MarkSessionStarting(ctx, name1)
-		},
-	))
-	assert.Nil(uut.UseDatabaseInTransaction(
-		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			if err := dbClient.MarkSessionStarting(ctx, name2); err != nil {
-				return err
-			}
 			return dbClient.MarkSessionReady(ctx, name2)
 		},
 	))
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			if err := dbClient.MarkSessionStarting(ctx, name3); err != nil {
-				return err
-			}
-			if err := dbClient.MarkSessionReady(ctx, name3); err != nil {
-				return err
-			}
-			return dbClient.MarkSessionClaimed(ctx, name3)
+			return dbClient.MarkSessionReady(ctx, name3)
 		},
 	))
 
@@ -818,100 +804,13 @@ func TestDBListSessions(t *testing.T) {
 	similarNames := listNames(db.SessionQueryFilter{SimilarName: &sharedPrefix})
 	assert.ElementsMatch([]string{name2, name3}, similarNames)
 
-	// List all STARTING and CLAIMED sessions: sessions 1 and 3 should return
+	// List all READY sessions: sessions 2 and 3 should return
 	stateFilteredNames := listNames(db.SessionQueryFilter{
 		TargetStates: []models.SessionStateENUMType{
-			models.SessionStateStarting,
-			models.SessionStateClaimed,
+			models.SessionStateReady,
 		},
 	})
-	assert.ElementsMatch([]string{name1, name3}, stateFilteredNames)
-}
-
-func TestDBSessionInvalidStateTransitions(t *testing.T) {
-	assert := assert.New(t)
-	log.SetLevel(log.DebugLevel)
-
-	utCtx := context.Background()
-
-	testDB := fmt.Sprintf("/tmp/rest_pty_ut_%s.db", ulid.Make().String())
-	log.WithField("db", testDB).Debug("Test database")
-
-	uut, err := db.NewConnection(db.GetSqliteDialector(testDB), logger.Error)
-	assert.Nil(err)
-
-	// Prepare the database tables
-	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
-
-	testDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
-
-	// Prepare a test session (starts IDLE)
-	sessionName := fmt.Sprintf("test-session-%s", ulid.Make().String())
-	assert.Nil(uut.UseDatabaseInTransaction(
-		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			_, err := dbClient.DefineNewSession(
-				ctx,
-				sessionName,
-				nil,
-				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
-				16384,
-				testDriverParams,
-			)
-			return err
-		},
-	))
-
-	// From IDLE, only IDLE and STARTING are legal next states. The remaining Mark calls
-	// must be rejected with a ConsistencyError, and the session state must stay IDLE.
-	illegalFromIdle := []struct {
-		label string
-		mark  func(ctx context.Context, dbClient db.Database) error
-	}{
-		{
-			label: "IDLE -> READY",
-			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionReady(ctx, sessionName)
-			},
-		},
-		{
-			label: "IDLE -> CLAIMED",
-			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionClaimed(ctx, sessionName)
-			},
-		},
-		{
-			label: "IDLE -> STOPPING",
-			mark: func(ctx context.Context, dbClient db.Database) error {
-				return dbClient.MarkSessionStopping(ctx, sessionName)
-			},
-		},
-	}
-	for _, transition := range illegalFromIdle {
-		err := uut.UseDatabaseInTransaction(utCtx, transition.mark)
-		var consistencyErr models.ConsistencyError
-		assert.Truef(errors.As(err, &consistencyErr),
-			"expected ConsistencyError for '%s', got %v", transition.label, err)
-
-		// The state must remain IDLE
-		assert.Nil(uut.UseDatabaseInTransaction(
-			utCtx, func(ctx context.Context, dbClient db.Database) error {
-				readBack, err := dbClient.GetSessionByName(ctx, sessionName)
-				assert.Nil(err)
-				assert.Equalf(models.SessionStateIdle, readBack.State,
-					"state changed after illegal transition '%s'", transition.label)
-				return nil
-			},
-		))
-	}
-
-	// Marking an unknown session is rejected with an UnknownSessionError
-	unknownErr := uut.UseDatabaseInTransaction(
-		utCtx, func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.MarkSessionStarting(ctx, fmt.Sprintf("missing-%s", ulid.Make().String()))
-		},
-	)
-	var unknownSessionErr models.UnknownSessionError
-	assert.True(errors.As(unknownErr, &unknownSessionErr))
+	assert.ElementsMatch([]string{name2, name3}, stateFilteredNames)
 }
 
 func TestDBListSessionsPagination(t *testing.T) {

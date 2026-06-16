@@ -153,3 +153,82 @@ func (e ValidationError) Error() string {
 func (e ValidationError) Unwrap() error {
 	return e.Core
 }
+
+// ======================================================================================
+// Session Runner Errors
+
+// SessionRunnerStartUpError error during session runner `StartSession`
+type SessionRunnerStartUpError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionRunnerStartUpError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionRunnerStartUpError) Unwrap() error {
+	return e.Core
+}
+
+// SessionRunnerShutdownError error during session runner `StopSession`
+type SessionRunnerShutdownError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionRunnerShutdownError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionRunnerShutdownError) Unwrap() error {
+	return e.Core
+}
+
+// SessionRunnerSubmitCommandError error when session runner submit commands to driver
+type SessionRunnerSubmitCommandError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionRunnerSubmitCommandError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionRunnerSubmitCommandError) Unwrap() error {
+	return e.Core
+}
+
+// SessionRunnerIPCProcessError error session runner encountered processing IPC messages
+type SessionRunnerIPCProcessError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionRunnerIPCProcessError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionRunnerIPCProcessError) Unwrap() error {
+	return e.Core
+}

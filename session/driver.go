@@ -41,12 +41,6 @@ type Driver interface {
 			@returns `models.RuntimeError` any shutdown issues encountered
 	*/
 	Stop(ctx context.Context) error
-
-	// InputBufferName fetch input REDIS buffer name
-	InputBufferName() string
-
-	// OutputBufferName fetch output REDIS buffer name
-	OutputBufferName() string
 }
 
 // CoreDriver core session driver which directly wraps around the support session driver
@@ -105,6 +99,11 @@ type driverImpl struct {
 	outputBufferName string
 }
 
+// driverFactoryFunc function signature for a driver factory function
+type driverFactoryFunc func(
+	ctx context.Context, session models.Session, redisClient redis.Client, commandStopNotify func(),
+) (Driver, error)
+
 /*
 NewDriver define a new driver instance for a session
 
@@ -151,21 +150,11 @@ func NewDriver(
 		commandStopNotify: commandStopNotify,
 		workingCtx:        nil,
 		workingCtxCancel:  nil,
-		inputBufferName:   session.ID + ".input",
-		outputBufferName:  session.ID + ".output",
+		inputBufferName:   BuildSessionInputBufferName(session.ID),
+		outputBufferName:  BuildSessionOutputBufferName(session.ID),
 	}
 
 	return instance, nil
-}
-
-// InputBufferName fetch input REDIS buffer name
-func (r *driverImpl) InputBufferName() string {
-	return r.inputBufferName
-}
-
-// OutputBufferName fetch output REDIS buffer name
-func (r *driverImpl) OutputBufferName() string {
-	return r.outputBufferName
 }
 
 /*
@@ -239,7 +228,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		r.workingCtx,
 		[]byte(
 			fmt.Sprintf(
-				"\n\n============= [%s] STARTING '%s' =============\n\n",
+				"\n\r============= [%s] STARTING '%s' =============\n\r",
 				time.Now().UTC().String(),
 				cmdDisplayStr,
 			),
@@ -319,7 +308,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 			lclCtx,
 			[]byte(
 				fmt.Sprintf(
-					"\n\n============= [%s] '%s' Stopped =============\n\n",
+					"\n\r============= [%s] '%s' Stopped =============\n\r",
 					time.Now().UTC().String(),
 					cmdDisplayStr,
 				),

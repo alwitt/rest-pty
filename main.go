@@ -120,7 +120,7 @@ func TestPtyDriver() error {
 		ID:                   ulid.Make().String(),
 		Name:                 "poc-session-driver",
 		Command:              models.SessionCommand{Command: "bash"},
-		State:                models.SessionStateClaimed,
+		State:                models.SessionStateReady,
 		DriverType:           models.SessionDriverTypePTY,
 		DriverMetadata:       nil,
 		OutputBufferCapacity: bufferCapacity,
@@ -153,11 +153,15 @@ func TestPtyDriver() error {
 	}()
 
 	// Prepare handle to REDIS buffer for INPUT and OUTPUT
-	inputBuf, err := redisClient.GetRingBuffer(ctx, uut.InputBufferName(), bufferCapacity)
+	inputBuf, err := redisClient.GetRingBuffer(
+		ctx, session.BuildSessionInputBufferName(shellSession.ID), bufferCapacity,
+	)
 	if err != nil {
 		return models.RuntimeError{Core: err, Message: "failed to open INPUT buffer"}
 	}
-	outputBuf, err := redisClient.GetRingBuffer(ctx, uut.OutputBufferName(), bufferCapacity)
+	outputBuf, err := redisClient.GetRingBuffer(
+		ctx, session.BuildSessionOutputBufferName(shellSession.ID), bufferCapacity,
+	)
 	if err != nil {
 		return models.RuntimeError{Core: err, Message: "failed to open OUTPUT buffer"}
 	}

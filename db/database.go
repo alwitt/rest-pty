@@ -79,17 +79,6 @@ type Database interface {
 	MarkSessionIdle(ctx context.Context, name string) error
 
 	/*
-		MarkSessionStarting mark a session is STARTING
-
-			@param ctx context.Context - execution context
-			@param name string - session name
-			@returns `models.UnknownSessionError` if session is unknown
-			@returns `models.ConsistencyError` state transition is not acceptable
-			@returns `models.PersistenceError` persistence layer failure
-	*/
-	MarkSessionStarting(ctx context.Context, name string) error
-
-	/*
 		MarkSessionReady mark a session is Ready
 
 			@param ctx context.Context - execution context
@@ -99,28 +88,6 @@ type Database interface {
 			@returns `models.PersistenceError` persistence layer failure
 	*/
 	MarkSessionReady(ctx context.Context, name string) error
-
-	/*
-		MarkSessionClaimed mark a session is CLAIMED
-
-			@param ctx context.Context - execution context
-			@param name string - session name
-			@returns `models.UnknownSessionError` if session is unknown
-			@returns `models.ConsistencyError` state transition is not acceptable
-			@returns `models.PersistenceError` persistence layer failure
-	*/
-	MarkSessionClaimed(ctx context.Context, name string) error
-
-	/*
-		MarkSessionStopping mark a session is STOPPING
-
-			@param ctx context.Context - execution context
-			@param name string - session name
-			@returns `models.UnknownSessionError` if session is unknown
-			@returns `models.ConsistencyError` state transition is not acceptable
-			@returns `models.PersistenceError` persistence layer failure
-	*/
-	MarkSessionStopping(ctx context.Context, name string) error
 
 	/*
 		UpdateSessionOutputBufCapacity change the output buffer capacity of a session.

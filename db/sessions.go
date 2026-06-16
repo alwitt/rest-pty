@@ -152,19 +152,6 @@ func (d *databaseImpl) MarkSessionIdle(_ context.Context, name string) error {
 }
 
 /*
-MarkSessionStarting mark a session is STARTING
-
-	@param ctx context.Context - execution context
-	@param name string - session name
-	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` state transition is not acceptable
-	@returns `models.PersistenceError` persistence layer failure
-*/
-func (d *databaseImpl) MarkSessionStarting(_ context.Context, name string) error {
-	return d.updateSessionState(name, models.SessionStateStarting)
-}
-
-/*
 MarkSessionReady mark a session is Ready
 
 	@param ctx context.Context - execution context
@@ -175,32 +162,6 @@ MarkSessionReady mark a session is Ready
 */
 func (d *databaseImpl) MarkSessionReady(_ context.Context, name string) error {
 	return d.updateSessionState(name, models.SessionStateReady)
-}
-
-/*
-MarkSessionClaimed mark a session is CLAIMED
-
-	@param ctx context.Context - execution context
-	@param name string - session name
-	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` state transition is not acceptable
-	@returns `models.PersistenceError` persistence layer failure
-*/
-func (d *databaseImpl) MarkSessionClaimed(_ context.Context, name string) error {
-	return d.updateSessionState(name, models.SessionStateClaimed)
-}
-
-/*
-MarkSessionStopping mark a session is STOPPING
-
-	@param ctx context.Context - execution context
-	@param name string - session name
-	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` state transition is not acceptable
-	@returns `models.PersistenceError` persistence layer failure
-*/
-func (d *databaseImpl) MarkSessionStopping(_ context.Context, name string) error {
-	return d.updateSessionState(name, models.SessionStateStopping)
 }
 
 /*
@@ -260,7 +221,7 @@ This can only be performed on IDLE sessions.
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) UpdateSessionRunMode(
-	ctx context.Context, name string, newMode models.SessionRunnerModeTypeENUMType,
+	_ context.Context, name string, newMode models.SessionRunnerModeTypeENUMType,
 ) error {
 	entry, err := d.getSessionEntryByName(name)
 	if err != nil {

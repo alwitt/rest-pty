@@ -43,17 +43,8 @@ const (
 	// SessionStateIdle session is idle
 	SessionStateIdle SessionStateENUMType = "IDLE"
 
-	// SessionStateStarting session is starting up
-	SessionStateStarting SessionStateENUMType = "STARTING"
-
-	// SessionStateReady session is running and ready to be claimed
+	// SessionStateReady session is running and ready to accept input
 	SessionStateReady SessionStateENUMType = "READY"
-
-	// SessionStateClaimed session has been claimed
-	SessionStateClaimed SessionStateENUMType = "CLAIMED"
-
-	// SessionStateStopping session is stopping
-	SessionStateStopping SessionStateENUMType = "STOPPING"
 )
 
 // SessionDriverTypeENUMType session driver type ENUM type
@@ -143,29 +134,12 @@ type SessionDriverPTYParams struct {
 func (s Session) ValidNextState(newState SessionStateENUMType) error {
 	statesWithTransitions := map[SessionStateENUMType]map[SessionStateENUMType]bool{
 		SessionStateIdle: {
-			SessionStateIdle:     true,
-			SessionStateStarting: true,
-		},
-		SessionStateStarting: {
-			SessionStateIdle:     true,
-			SessionStateStarting: true,
-			SessionStateReady:    true,
+			SessionStateIdle:  true,
+			SessionStateReady: true,
 		},
 		SessionStateReady: {
-			SessionStateIdle:     true,
-			SessionStateReady:    true,
-			SessionStateClaimed:  true,
-			SessionStateStopping: true,
-		},
-		SessionStateClaimed: {
-			SessionStateIdle:     true,
-			SessionStateClaimed:  true,
-			SessionStateReady:    true,
-			SessionStateStopping: true,
-		},
-		SessionStateStopping: {
-			SessionStateIdle:     true,
-			SessionStateStopping: true,
+			SessionStateReady: true,
+			SessionStateIdle:  true,
 		},
 	}
 
