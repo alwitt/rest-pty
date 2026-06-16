@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/redis"
@@ -801,6 +802,26 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 		}
 	}
 
+	// Helper function to build the standard response message
+	buildResp := func(
+		reqID string, respIPCType models.IPCMessageTypeEnumType, cmdErr error,
+	) models.IPCMessageEnvelope {
+		resp := models.IPCMessageRespUniversal{
+			BaseIPCMessage: models.BaseIPCMessage{
+				RequestID: reqID,
+				Type:      respIPCType,
+				Sender:    "session-" + r.sessionName + ".runner",
+				Timestamp: time.Now().UTC(),
+			},
+			Success: true,
+		}
+		if cmdErr != nil {
+			resp.Success = false
+			resp.ErrorMsg = common.GetTypedPtr(cmdErr.Error())
+		}
+		return resp
+	}
+
 	// Helper function to return a response back to the original requester
 	returnResp := func(reqID string, resp models.IPCMessageEnvelope) error {
 		respQueue, err := r.redisClient.GetQueueHandle(
@@ -818,16 +839,27 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 	switch typedIPC := parsed.(type) {
 	case models.IPCMessageReqRunCommands:
 		// Submit user commands to the session
-		if err := r.SubmitCommands(r.workingCtx, typedIPC.Commands); err != nil {
-			return models.SessionRunnerIPCProcessError{
-				Core: err, Message: "failed to submit commands to session " + r.sessionName + " driver",
-			}
-		}
+		cmdErr := r.SubmitCommands(r.workingCtx, typedIPC.Commands)
+		// Build reply
+		reply := buildResp(typedIPC.RequestID, models.IPCMsgTypeRespRunCommands, cmdErr)
 		// Send feedback to original requester
-		if err := returnResp(typedIPC.RequestID, models.IPCMessageRespUniversal{}); err != nil {
+		if err := returnResp(typedIPC.RequestID, reply); err != nil {
 			return models.SessionRunnerIPCProcessError{
 				Core:    err,
 				Message: "failed to send response for session " + r.sessionName + " command submission",
+			}
+		}
+
+	case models.IPCMessageReqStopSession:
+		// Stop the session driver
+		cmdErr := r.StopSession(r.workingCtx, typedIPC.Blocking)
+		// Build reply
+		reply := buildResp(typedIPC.RequestID, models.IPCMsgTypeRespStopSession, cmdErr)
+		// Send feedback to original requester
+		if err := returnResp(typedIPC.RequestID, reply); err != nil {
+			return models.SessionRunnerIPCProcessError{
+				Core:    err,
+				Message: "failed to send response for session " + r.sessionName + " stop request",
 			}
 		}
 

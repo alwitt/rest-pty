@@ -137,7 +137,11 @@ func validateIPCMessageType(fl validator.FieldLevel) bool {
 	switch IPCMessageTypeEnumType(fl.Field().String()) {
 	case IPCMsgTypeReqRunCommands:
 		fallthrough
+	case IPCMsgTypeReqStopSession:
+		fallthrough
 	case IPCMsgTypeRespRunCommands:
+		fallthrough
+	case IPCMsgTypeRespStopSession:
 		return true
 	}
 	return false

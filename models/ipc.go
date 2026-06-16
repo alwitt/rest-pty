@@ -25,12 +25,18 @@ const (
 	// IPCMsgTypeReqRunCommands user request run commands
 	IPCMsgTypeReqRunCommands IPCMessageTypeEnumType = "IPC_REQ_RUN_COMMANDS"
 
+	// IPCMsgTypeReqStopSession user request stopping a session
+	IPCMsgTypeReqStopSession IPCMessageTypeEnumType = "IPC_REQ_STOP_SESSION"
+
 	/*
 		Response - Session Runner
 	*/
 
 	// IPCMsgTypeRespRunCommands response to run user commands
 	IPCMsgTypeRespRunCommands IPCMessageTypeEnumType = "IPC_RESP_RUN_COMMANDS"
+
+	// IPCMsgTypeRespStopSession response to session stop request
+	IPCMsgTypeRespStopSession IPCMessageTypeEnumType = "IPC_RESP_STOP_SESSION"
 
 /*
 Request - Session Manager
@@ -62,11 +68,20 @@ func ParseIPCMessage(validator *validator.Validate, msg []byte) (interface{}, er
 		}
 		return parsed, validator.Struct(&parsed)
 
+	case IPCMsgTypeReqStopSession:
+		var parsed IPCMessageReqStopSession
+		if err := json.Unmarshal(msg, &parsed); err != nil {
+			return nil, fmt.Errorf("IPC message '%s' parse failed [%w]", asBaseMsg.Type, err)
+		}
+		return parsed, validator.Struct(&parsed)
+
 	/****************************************************************************************
 	Response - Session Runner
 	****************************************************************************************/
 
 	case IPCMsgTypeRespRunCommands:
+		fallthrough
+	case IPCMsgTypeRespStopSession:
 		var parsed IPCMessageRespUniversal
 		if err := json.Unmarshal(msg, &parsed); err != nil {
 			return nil, fmt.Errorf("IPC message '%s' parse failed [%w]", asBaseMsg.Type, err)
@@ -90,12 +105,6 @@ type BaseIPCMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// StringPayload return its payload as a string
-func (m BaseIPCMessage) StringPayload() (string, error) {
-	t, err := json.Marshal(&m)
-	return string(t), err
-}
-
 // IPCMessageRespUniversal universal response for requests which don't need special
 // response structs.
 type IPCMessageRespUniversal struct {
@@ -104,6 +113,12 @@ type IPCMessageRespUniversal struct {
 	Success bool `json:"success"`
 	// ErrorMsg in case of failure, an accompanying error message
 	ErrorMsg *string `json:"error,omitempty"`
+}
+
+// StringPayload return its payload as a string
+func (m IPCMessageRespUniversal) StringPayload() (string, error) {
+	t, err := json.Marshal(&m)
+	return string(t), err
 }
 
 /****************************************************************************************
@@ -117,6 +132,35 @@ type IPCMessageReqRunCommands struct {
 	Commands []SessionInputCommand `json:"commands" validate:"required,gte=1,dive"`
 }
 
+// StringPayload return its payload as a string
+func (m IPCMessageReqRunCommands) StringPayload() (string, error) {
+	t, err := json.Marshal(&m)
+	return string(t), err
+}
+
+// IPCMessageReqStopSession stop a session
+type IPCMessageReqStopSession struct {
+	BaseIPCMessage
+	// Blocking whether the request is a blocking request
+	Blocking bool `json:"blocking"`
+}
+
+// StringPayload return its payload as a string
+func (m IPCMessageReqStopSession) StringPayload() (string, error) {
+	t, err := json.Marshal(&m)
+	return string(t), err
+}
+
 /****************************************************************************************
 Response - Session Runner
 ****************************************************************************************/
+
+/****************************************************************************************
+Enforce IPCMessageEnvelope Interface At Built Time
+****************************************************************************************/
+
+var (
+	_ IPCMessageEnvelope = IPCMessageRespUniversal{}
+	_ IPCMessageEnvelope = IPCMessageReqRunCommands{}
+	_ IPCMessageEnvelope = IPCMessageReqStopSession{}
+)
