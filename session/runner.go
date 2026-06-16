@@ -152,6 +152,9 @@ type NewSessionRunnerParams struct {
 	// DriverFactory session driver factory function
 	DriverFactory driverFactoryFunc `validate:"required"`
 
+	// WorkerFactory worker task processor factory function
+	WorkerFactory taskProcessorFactoryFunc `validate:"required"`
+
 	// SessionIdleNotify callback function to trigger when the session went back to the IDLE state
 	SessionIdleNotify func() `validate:"required"`
 
@@ -250,7 +253,7 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 	// ------------------------------------------------------------------------------------
 	// Prepare worker task engine
 
-	instance.worker, err = goutils.GetNewTaskProcessorInstance(
+	instance.worker, err = params.WorkerFactory(
 		instance.workingCtx,
 		instance.session.Name+".runner",
 		10,

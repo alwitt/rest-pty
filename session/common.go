@@ -1,5 +1,12 @@
 package session
 
+import (
+	"context"
+
+	"github.com/alwitt/goutils"
+	"github.com/apex/log"
+)
+
 // BuildSessionInputBufferName helper function to build a session's INPUT BUFFER name
 func BuildSessionInputBufferName(sessionID string) string {
 	return sessionID + ".input"
@@ -19,3 +26,12 @@ func BuildSessionIPCQueueName(sessionID string) string {
 func BuildSessionIPCRespQueueName(requestID string) string {
 	return "req." + requestID + ".resp"
 }
+
+// taskProcessorFactoryFunc function signature for a task processor factory function
+type taskProcessorFactoryFunc func(
+	ctxt context.Context,
+	instanceName string,
+	taskBufferLen int,
+	logTags log.Fields,
+	metricsHelper goutils.TaskProcessorMetricHelper,
+) (goutils.TaskProcessor, error)
