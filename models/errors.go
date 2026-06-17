@@ -232,3 +232,63 @@ func (e SessionRunnerIPCProcessError) Error() string {
 func (e SessionRunnerIPCProcessError) Unwrap() error {
 	return e.Core
 }
+
+// ======================================================================================
+// Session Manager Errors
+
+// SessionManagerStartSessionError error session manager start session runner
+type SessionManagerStartSessionError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionManagerStartSessionError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionManagerStartSessionError) Unwrap() error {
+	return e.Core
+}
+
+// SessionManagerStopSessionError error session manager stop session runner
+type SessionManagerStopSessionError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionManagerStopSessionError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionManagerStopSessionError) Unwrap() error {
+	return e.Core
+}
+
+// SessionManagerStopAllSessionsError error session manager bulk stop session runners
+type SessionManagerStopAllSessionsError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e SessionManagerStopAllSessionsError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e SessionManagerStopAllSessionsError) Unwrap() error {
+	return e.Core
+}
