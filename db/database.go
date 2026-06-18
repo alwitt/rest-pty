@@ -33,6 +33,9 @@ type SessionQueryFilter struct {
 
 // Database the database handle to interacting with the data base
 type Database interface {
+	// Ready check whether the DB connection is working
+	Ready() error
+
 	/*
 		DefineNewSession define a new session
 
@@ -224,4 +227,9 @@ func newDatabase(
 	}
 
 	return instance, nil
+}
+
+// Ready check whether the DB connection is working
+func (d *databaseImpl) Ready() error {
+	return d.db.Find(&[]sessionEntry{}).Limit(1).Error
 }
