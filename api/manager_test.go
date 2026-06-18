@@ -1264,3 +1264,287 @@ func TestSessionManagerHandlerDeleteSession(t *testing.T) {
 		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
 	})
 }
+
+func TestSessionManagerHandlerStartSession(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	route := "/v1/sessions/{sessionName}/start"
+
+	// Case 0: start a session successfully, defaulting to non-blocking
+	t.Run("success non-blocking default", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StartSession(mock.Anything, "test-session", false).
+			Return(nil).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/start", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 1: blocking flag is parsed and forwarded to the manager
+	t.Run("success blocking", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StartSession(mock.Anything, "test-session", true).
+			Return(nil).
+			Once()
+
+		req, err := http.NewRequest(
+			"POST", "/v1/sessions/test-session/start?block=true", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 2: non-boolean block query param is rejected before reaching the manager
+	t.Run("invalid block param", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"POST", "/v1/sessions/test-session/start?block=maybe", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 3: unknown session yields 404
+	t.Run("unknown session", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StartSession(mock.Anything, "missing", false).
+			Return(models.UnknownSessionError{Message: "unknown"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/missing/start", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusNotFound, respRecorder.Code)
+	})
+
+	// Case 4: session in wrong state yields 409
+	t.Run("consistency error", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StartSession(mock.Anything, "test-session", false).
+			Return(models.ConsistencyError{Message: "not idle"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/start", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusConflict, respRecorder.Code)
+	})
+
+	// Case 5: generic manager failure surfaces as 500
+	t.Run("manager failure", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StartSession(mock.Anything, "test-session", false).
+			Return(models.SessionManagerStartSessionError{Message: "boom"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/start", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StartSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
+	})
+}
+
+func TestSessionManagerHandlerStopSession(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	route := "/v1/sessions/{sessionName}/stop"
+
+	// Case 0: stop a session successfully, defaulting to non-blocking
+	t.Run("success non-blocking default", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StopSession(mock.Anything, "test-session", false).
+			Return(nil).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/stop", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 1: blocking flag is parsed and forwarded to the manager
+	t.Run("success blocking", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StopSession(mock.Anything, "test-session", true).
+			Return(nil).
+			Once()
+
+		req, err := http.NewRequest(
+			"POST", "/v1/sessions/test-session/stop?block=true", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 2: non-boolean block query param is rejected before reaching the manager
+	t.Run("invalid block param", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"POST", "/v1/sessions/test-session/stop?block=maybe", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 3: unknown session yields 404
+	t.Run("unknown session", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StopSession(mock.Anything, "missing", false).
+			Return(models.UnknownSessionError{Message: "unknown"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/missing/stop", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusNotFound, respRecorder.Code)
+	})
+
+	// Case 4: session in wrong state yields 409
+	t.Run("consistency error", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StopSession(mock.Anything, "test-session", false).
+			Return(models.ConsistencyError{Message: "not running"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/stop", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusConflict, respRecorder.Code)
+	})
+
+	// Case 5: generic manager failure surfaces as 500
+	t.Run("manager failure", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			StopSession(mock.Anything, "test-session", false).
+			Return(models.SessionManagerStopSessionError{Message: "boom"}).
+			Once()
+
+		req, err := http.NewRequest("POST", "/v1/sessions/test-session/stop", nil)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.StopSession))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
+	})
+}

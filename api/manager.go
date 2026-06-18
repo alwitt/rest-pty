@@ -1128,3 +1128,153 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 	respCode = http.StatusOK
 	response = h.GetStdRESTSuccessMsg(r.Context())
 }
+
+// ======================================================================================
+// Session CRUD - Start Session
+
+// StartSession godoc
+// @Summary Start a session
+// @Description Bring up a session runner for an existing session and start it. By default
+// @Description the request to the session manager is non-blocking; set "block" to true to
+// @Description wait for the start to complete.
+// @tags management,session
+// @Produce json
+// @Param X-Request-ID header string false "Request ID"
+// @Param sessionName path string true "Session name"
+// @Param block query bool false "Whether to block until the start completes"
+// @Success 200 {object} goutils.RestAPIBaseResponse "success"
+// @Failure 400 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 403 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 404 {string} string "error"
+// @Failure 409 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 500 {object} goutils.RestAPIBaseResponse "error"
+// @Router /v1/sessions/{sessionName}/start [post]
+func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Request) {
+	var respCode int
+	var response interface{}
+	logTags := h.GetLogTagsForContext(r.Context())
+	defer func() {
+		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
+			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+		}
+	}()
+
+	sessionName := mux.Vars(r)["sessionName"]
+
+	// Parse the optional blocking flag
+	blocking := false
+	if raw := r.URL.Query().Get("block"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Invalid 'block' query parameter"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		blocking = parsed
+	}
+
+	// Start the session
+	if err := h.manager.StartSession(r.Context(), sessionName, blocking); err != nil {
+		var unknownSession models.UnknownSessionError
+		var consistency models.ConsistencyError
+		switch {
+		case errors.As(err, &unknownSession):
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		case errors.As(err, &consistency):
+			msg := "Session '" + sessionName + "' is not in a state allowing start"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusConflict
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		default:
+			msg := "Failed to start session '" + sessionName + "'"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusInternalServerError
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		}
+		return
+	}
+
+	// Report success
+	respCode = http.StatusOK
+	response = h.GetStdRESTSuccessMsg(r.Context())
+}
+
+// ======================================================================================
+// Session CRUD - Stop Session
+
+// StopSession godoc
+// @Summary Stop a session
+// @Description Bring a session back to IDLE and unload its runner. By default the request
+// @Description to the session manager is non-blocking; set "block" to true to wait for the
+// @Description stop to complete.
+// @tags management,session
+// @Produce json
+// @Param X-Request-ID header string false "Request ID"
+// @Param sessionName path string true "Session name"
+// @Param block query bool false "Whether to block until the stop completes"
+// @Success 200 {object} goutils.RestAPIBaseResponse "success"
+// @Failure 400 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 403 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 404 {string} string "error"
+// @Failure 409 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 500 {object} goutils.RestAPIBaseResponse "error"
+// @Router /v1/sessions/{sessionName}/stop [post]
+func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Request) {
+	var respCode int
+	var response interface{}
+	logTags := h.GetLogTagsForContext(r.Context())
+	defer func() {
+		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
+			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+		}
+	}()
+
+	sessionName := mux.Vars(r)["sessionName"]
+
+	// Parse the optional blocking flag
+	blocking := false
+	if raw := r.URL.Query().Get("block"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Invalid 'block' query parameter"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		blocking = parsed
+	}
+
+	// Stop the session
+	if err := h.manager.StopSession(r.Context(), sessionName, blocking); err != nil {
+		var unknownSession models.UnknownSessionError
+		var consistency models.ConsistencyError
+		switch {
+		case errors.As(err, &unknownSession):
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		case errors.As(err, &consistency):
+			msg := "Session '" + sessionName + "' is not in a state allowing stop"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusConflict
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		default:
+			msg := "Failed to stop session '" + sessionName + "'"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusInternalServerError
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		}
+		return
+	}
+
+	// Report success
+	respCode = http.StatusOK
+	response = h.GetStdRESTSuccessMsg(r.Context())
+}
