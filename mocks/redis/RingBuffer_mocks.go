@@ -40,16 +40,16 @@ func (_m *RingBuffer) EXPECT() *RingBuffer_Expecter {
 }
 
 // AsReadWriteCloser provides a mock function for the type RingBuffer
-func (_mock *RingBuffer) AsReadWriteCloser(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser {
-	ret := _mock.Called(parentCtx, dataCheckInt)
+func (_mock *RingBuffer) AsReadWriteCloser(parentCtx context.Context, initReadOffset int64, dataCheckInt time.Duration) io.ReadWriteCloser {
+	ret := _mock.Called(parentCtx, initReadOffset, dataCheckInt)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AsReadWriteCloser")
 	}
 
 	var r0 io.ReadWriteCloser
-	if returnFunc, ok := ret.Get(0).(func(context.Context, time.Duration) io.ReadWriteCloser); ok {
-		r0 = returnFunc(parentCtx, dataCheckInt)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int64, time.Duration) io.ReadWriteCloser); ok {
+		r0 = returnFunc(parentCtx, initReadOffset, dataCheckInt)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(io.ReadWriteCloser)
@@ -65,24 +65,30 @@ type RingBuffer_AsReadWriteCloser_Call struct {
 
 // AsReadWriteCloser is a helper method to define mock.On call
 //   - parentCtx context.Context
+//   - initReadOffset int64
 //   - dataCheckInt time.Duration
-func (_e *RingBuffer_Expecter) AsReadWriteCloser(parentCtx interface{}, dataCheckInt interface{}) *RingBuffer_AsReadWriteCloser_Call {
-	return &RingBuffer_AsReadWriteCloser_Call{Call: _e.mock.On("AsReadWriteCloser", parentCtx, dataCheckInt)}
+func (_e *RingBuffer_Expecter) AsReadWriteCloser(parentCtx interface{}, initReadOffset interface{}, dataCheckInt interface{}) *RingBuffer_AsReadWriteCloser_Call {
+	return &RingBuffer_AsReadWriteCloser_Call{Call: _e.mock.On("AsReadWriteCloser", parentCtx, initReadOffset, dataCheckInt)}
 }
 
-func (_c *RingBuffer_AsReadWriteCloser_Call) Run(run func(parentCtx context.Context, dataCheckInt time.Duration)) *RingBuffer_AsReadWriteCloser_Call {
+func (_c *RingBuffer_AsReadWriteCloser_Call) Run(run func(parentCtx context.Context, initReadOffset int64, dataCheckInt time.Duration)) *RingBuffer_AsReadWriteCloser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 time.Duration
+		var arg1 int64
 		if args[1] != nil {
-			arg1 = args[1].(time.Duration)
+			arg1 = args[1].(int64)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -93,7 +99,7 @@ func (_c *RingBuffer_AsReadWriteCloser_Call) Return(readWriteCloser io.ReadWrite
 	return _c
 }
 
-func (_c *RingBuffer_AsReadWriteCloser_Call) RunAndReturn(run func(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser) *RingBuffer_AsReadWriteCloser_Call {
+func (_c *RingBuffer_AsReadWriteCloser_Call) RunAndReturn(run func(parentCtx context.Context, initReadOffset int64, dataCheckInt time.Duration) io.ReadWriteCloser) *RingBuffer_AsReadWriteCloser_Call {
 	_c.Call.Return(run)
 	return _c
 }

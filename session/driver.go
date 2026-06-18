@@ -265,7 +265,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		defer r.wg.Done()
 		logTags := r.GetLogTagsForContext(r.workingCtx)
 
-		asReader := inputBuf.AsReadWriteCloser(r.workingCtx, time.Millisecond*10)
+		asReader := inputBuf.AsReadWriteCloser(r.workingCtx, 0, time.Millisecond*10)
 		defer func() {
 			_ = asReader.Close()
 		}()
@@ -288,7 +288,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		defer r.wg.Done()
 		logTags := r.GetLogTagsForContext(r.workingCtx)
 
-		asWriter := outputBuf.AsReadWriteCloser(r.workingCtx, time.Millisecond*10)
+		asWriter := outputBuf.AsReadWriteCloser(r.workingCtx, 0, time.Millisecond*10)
 		defer func() {
 			_ = asWriter.Close()
 		}()

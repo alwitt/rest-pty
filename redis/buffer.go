@@ -126,12 +126,15 @@ type RingBuffer interface {
 			@param parentCtx context.Context - the parent execution context for this buffer
 			    which allows for clean execution control of the buffer while maintaining
 			    standard interface.
+			@param initReadOffset int64 - define the starting read index offset on the buffer
 			@param dataCheckInt time.Duration - as the buffer `ReadAt` API is non-blocking,
 			    this set the interval of the internal polling loop for available data. Minimum
 			    value is 1ms.
 			@returns interface complaint with `io.ReadWriteCloser`
 	*/
-	AsReadWriteCloser(parentCtx context.Context, dataCheckInt time.Duration) io.ReadWriteCloser
+	AsReadWriteCloser(
+		parentCtx context.Context, initReadOffset int64, dataCheckInt time.Duration,
+	) io.ReadWriteCloser
 }
 
 type ringBuffer struct {
@@ -240,20 +243,21 @@ interface, allowing this buffer to be used other standard IO helper functions.
 	@param parentCtx context.Context - the parent execution context for this buffer
 	    which allows for clean execution control of the buffer while maintaining
 	    standard interface.
+	@param initReadOffset int64 - define the starting read index offset on the buffer
 	@param dataCheckInt time.Duration - as the buffer `ReadAt` API is non-blocking,
 	    this set the interval of the internal polling loop for available data. Minimum
 	    value is 1ms.
 	@returns interface complaint with `io.ReadWriteCloser`
 */
 func (b *ringBuffer) AsReadWriteCloser(
-	parentCtx context.Context, dataCheckInt time.Duration,
+	parentCtx context.Context, initReadOffset int64, dataCheckInt time.Duration,
 ) io.ReadWriteCloser {
 	instanceCtx, instanceCtxCancel := context.WithCancel(parentCtx)
 	return &contextRingBuffer{
 		WorkingCtx:       instanceCtx,
 		WorkingCtxCancel: instanceCtxCancel,
 		Buffer:           b,
-		StreamReadPtr:    0,
+		StreamReadPtr:    initReadOffset,
 		DataCheckInt:     dataCheckInt,
 	}
 }

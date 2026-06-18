@@ -651,7 +651,7 @@ func TestRedisRingBufferAsStdReadWrite(t *testing.T) {
 	}()
 
 	// Wrap the buffer behind the standard `io.ReadWriteCloser` interface
-	rwc := uut.AsReadWriteCloser(utCtx, time.Millisecond)
+	rwc := uut.AsReadWriteCloser(utCtx, 0, time.Millisecond)
 
 	// Prepare 32768 bytes of random test data
 	testData := make([]byte, 32768)

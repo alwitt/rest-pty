@@ -175,14 +175,14 @@ func TestPtyDriver() error {
 
 	log.Warn("\n==================== [PTY Driver] Starting shell session =======================\n")
 	go func() {
-		input := inputBuf.AsReadWriteCloser(ctx, time.Millisecond*5)
+		input := inputBuf.AsReadWriteCloser(ctx, 0, time.Millisecond*5)
 		_, err := io.Copy(input, os.Stdin)
 		if err != nil && !errors.Is(err, syscall.EIO) && !errors.Is(err, os.ErrClosed) {
 			log.WithError(err).Fatal("INPUT piping failed")
 		}
 	}()
 	{
-		output := outputBuf.AsReadWriteCloser(ctx, time.Millisecond*5)
+		output := outputBuf.AsReadWriteCloser(ctx, 0, time.Millisecond*5)
 		_, err := io.Copy(os.Stdout, output)
 		if err != nil {
 			return models.RuntimeError{Core: err, Message: "OUTPUT piping failed"}
