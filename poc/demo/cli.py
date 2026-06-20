@@ -39,6 +39,11 @@ def input_commands_url(base_url, name):
     return f"{session_url(base_url, name)}/io/input/commands"
 
 
+def output_chunk_url(base_url, name):
+    """Output chunk read endpoint: /v1/sessions/{name}/io/output/chunk"""
+    return f"{session_url(base_url, name)}/io/output/chunk"
+
+
 def output_tail_url(base_url, name):
     """SSE output tail endpoint: /v1/sessions/{name}/io/output/tail"""
     return f"{session_url(base_url, name)}/io/output/tail"
@@ -305,6 +310,52 @@ def session_ctrl(ctx, character):
         json={"commands": commands},
     )
     show(resp)
+
+
+@session.command("read")
+@click.option(
+    "--offset",
+    "-o",
+    type=int,
+    required=True,
+    help="Byte offset in the output stream to read from.",
+)
+@click.option(
+    "--length",
+    "-l",
+    type=int,
+    required=True,
+    help="Max number of bytes to read (server caps this at the buffer capacity).",
+)
+@click.pass_context
+def session_read(ctx, offset, length):
+    """Read one chunk from the session's output ring buffer.
+
+    The requested offset may have aged out of the buffer; in that case the read
+    is advanced and the response's "actual_offset" reports where the returned
+    data actually starts. The decoded bytes are written to stdout, with a
+    summary on stderr.
+    """
+    resp = requests.get(
+        output_chunk_url(ctx.obj["base_url"], ctx.obj["session_name"]),
+        params={"offset": offset, "limit": length},
+    )
+
+    # On error, surface the standard JSON envelope and exit non-zero.
+    try:
+        body = resp.json()
+    except ValueError:
+        click.echo(f"HTTP {resp.status_code}: {resp.text}", err=True)
+        sys.exit(1)
+    if not resp.ok or not body.get("success", False):
+        show(resp)
+        return
+
+    click.echo(
+        f"actual_offset={body['actual_offset']} read={body['read']}", err=True
+    )
+    sys.stdout.buffer.write(base64.b64decode(body.get("data") or ""))
+    sys.stdout.buffer.flush()
 
 
 @session.command("tail")
