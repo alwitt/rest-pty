@@ -167,12 +167,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	// ------------------------------------------------------------------------------------
 	// Build and start server
 
-	// Derive a context that is cancelled on SIGINT (Ctrl+C) or SIGTERM (the signal
-	// orchestrators such as Docker / Kubernetes / systemd send for graceful shutdown).
-	runCtx, stop := signal.NotifyContext(ctx.Context, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	server, err := app.BuildNewServer(runCtx, configs)
+	server, err := app.BuildNewServer(ctx.Context, configs)
 	if err != nil {
 		log.
 			WithError(err).
@@ -184,7 +179,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	// Buffered so a failing server goroutine never blocks on the send; sized for both
 	// the API and metrics servers in case they fail concurrently.
 	serverErrors := make(chan error, 2)
-	if err := server.Start(runCtx, serverErrors); err != nil {
+	if err := server.Start(ctx.Context, serverErrors); err != nil {
 		log.
 			WithError(err).
 			WithFields(logTags).
@@ -195,6 +190,11 @@ func runApplicationServer(ctx *cli.Context) error {
 	// ------------------------------------------------------------------------------------
 	// Wait for termination: either a shutdown signal (runCtx cancelled) or a fatal
 	// runtime failure from one of the servers.
+
+	// Derive a context that is cancelled on SIGINT (Ctrl+C) or SIGTERM (the signal
+	// orchestrators such as Docker / Kubernetes / systemd send for graceful shutdown).
+	runCtx, stop := signal.NotifyContext(ctx.Context, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	select {
 	case <-runCtx.Done():

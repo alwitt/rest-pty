@@ -47,6 +47,10 @@ up: .prepare ## Start docker compose development stack
 down: .prepare ## Stop docker compose development stack
 	docker compose -f docker/docker-compose.yml down
 
+.PHONY: api
+api: build ## Run local dev API server
+	./rest-pty -l info server -c poc/demo/server_cfg.yml
+
 .prepare: ## Prepare the project for local development
 	@pip3 install pre-commit
 	@pre-commit install

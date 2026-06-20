@@ -1,0 +1,18 @@
+---
+metrics:
+  service:
+    listenOn: 127.0.0.1
+    appPort: 3001
+
+api:
+  service:
+    listenOn: 127.0.0.1
+    appPort: 38281
+
+redis:
+  host: 127.0.0.1
+  port: 6479
+  dbNumber: 0
+
+sqlite:
+  file: ./tmp/rest-pty.db
