@@ -154,6 +154,44 @@ func (e ValidationError) Unwrap() error {
 	return e.Core
 }
 
+// BootStrapError application boot strap error
+type BootStrapError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e BootStrapError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e BootStrapError) Unwrap() error {
+	return e.Core
+}
+
+// ShutdownError application shutdown error
+type ShutdownError struct {
+	Core    error
+	Message string
+}
+
+// Error implement error interface
+func (e ShutdownError) Error() string {
+	if e.Core != nil {
+		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+	}
+	return e.Message
+}
+
+// Unwrap implement wrapped error
+func (e ShutdownError) Unwrap() error {
+	return e.Core
+}
+
 // ======================================================================================
 // Session Runner Errors
 

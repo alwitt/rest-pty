@@ -5,7 +5,7 @@ SHELL = bash
 include .env
 export
 
-all: lint
+all: build
 
 .PHONY: lint
 lint: .prepare ## Lint the files

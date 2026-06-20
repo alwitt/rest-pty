@@ -144,3 +144,11 @@ func ActiveSessionWrapper(
 	}
 	return coreLogic(ctx, activeDBClient)
 }
+
+// DefineTables helper function meant to be used for unit-testing to prepare a
+// database with tables
+func DefineTables(_ context.Context, db *gorm.DB) error {
+	return db.AutoMigrate(
+		&sessionEntry{},
+	)
+}

@@ -87,7 +87,7 @@ func NewSessionManagerHandler(
 // @Failure 400 {object} goutils.RestAPIBaseResponse "error"
 // @Failure 404 {string} string "error"
 // @Failure 500 {object} goutils.RestAPIBaseResponse "error"
-// @Router /v1/alive [get]
+// @Router /liveness/alive [get]
 func (h SessionManagerHandler) Alive(w http.ResponseWriter, r *http.Request) {
 	logTags := h.GetLogTagsForContext(r.Context())
 	if err := h.WriteRESTResponse(
@@ -107,7 +107,7 @@ func (h SessionManagerHandler) Alive(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} goutils.RestAPIBaseResponse "error"
 // @Failure 404 {string} string "error"
 // @Failure 500 {object} goutils.RestAPIBaseResponse "error"
-// @Router /v1/ready [get]
+// @Router /liveness/ready [get]
 func (h SessionManagerHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	var respCode int
 	var response interface{}
