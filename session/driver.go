@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/apex/log"
 	"github.com/oklog/ulid/v2"
 )
@@ -86,7 +86,7 @@ type driverImpl struct {
 
 	session models.Session
 
-	redisClient redis.Client
+	redisClient goutilsRedis.Client
 
 	instanceID string
 
@@ -101,7 +101,10 @@ type driverImpl struct {
 
 // driverFactoryFunc function signature for a driver factory function
 type driverFactoryFunc func(
-	ctx context.Context, session models.Session, redisClient redis.Client, commandStopNotify func(),
+	ctx context.Context,
+	session models.Session,
+	redisClient goutilsRedis.Client,
+	commandStopNotify func(),
 ) (Driver, error)
 
 /*
@@ -113,7 +116,7 @@ this callback MUST NOT directly trigger call to driver `Stop`.
 
 	@param ctx context.Context - execution context
 	@param session models.Session - the session this driver is for
-	@param redisClient redis.Client - the REDIS client
+	@param redisClient goutilsRedis.Client - the REDIS client
 	@param commandStopNotify func() - callback function to trigger when session command stopped
 	    before driver `Stop` is called.
 	@returns the new driver
@@ -121,7 +124,7 @@ this callback MUST NOT directly trigger call to driver `Stop`.
 func NewDriver(
 	_ context.Context,
 	session models.Session,
-	redisClient redis.Client,
+	redisClient goutilsRedis.Client,
 	commandStopNotify func(),
 ) (Driver, error) {
 	instanceID := ulid.Make().String()

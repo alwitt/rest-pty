@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
@@ -35,21 +35,21 @@ type SessionIOHandler struct {
 	persistence db.Client
 
 	// redisClient redis Client handle
-	redisClient redis.Client
+	redisClient goutilsRedis.Client
 }
 
 /*
 NewSessionIOHandler define a new session IO REST API handler
 
 	@param persistence db.Client - DB persistence layer
-	@param redisClient redis.Client - redis client
+	@param redisClient goutilsRedis.Client - redis client
 	@param logConfig common.HTTPRequestLogging - handler log settings
 	@param metrics goutils.HTTPRequestMetricHelper - metric collection agent
 	@returns new handler
 */
 func NewSessionIOHandler(
 	persistence db.Client,
-	redisClient redis.Client,
+	redisClient goutilsRedis.Client,
 	logConfig models.HTTPRequestLogging,
 	metrics goutils.HTTPRequestMetricHelper,
 ) (SessionIOHandler, error) {

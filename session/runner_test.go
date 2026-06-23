@@ -9,13 +9,12 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	mockdb "github.com/alwitt/rest-pty/mocks/db"
-	mockredis "github.com/alwitt/rest-pty/mocks/redis"
 	mocksession "github.com/alwitt/rest-pty/mocks/session"
 	mocktest "github.com/alwitt/rest-pty/mocks/test"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +26,7 @@ type runnerTestMocks struct {
 	persistence  *mockdb.Client
 	database     *mockdb.Database
 	driver       *mocksession.Driver
-	redisClient  *mockredis.Client
+	redisClient  *mocktest.RedisClientForTest
 	worker       *mocktest.TaskProcessorForTest
 	dummyManager *mocktest.ForTextSessionManager
 }
@@ -38,7 +37,7 @@ func newRunnerTestMocks(t *testing.T) *runnerTestMocks {
 		persistence:  mockdb.NewClient(t),
 		database:     mockdb.NewDatabase(t),
 		driver:       mocksession.NewDriver(t),
-		redisClient:  mockredis.NewClient(t),
+		redisClient:  mocktest.NewRedisClientForTest(t),
 		worker:       mocktest.NewTaskProcessorForTest(t),
 		dummyManager: mocktest.NewForTextSessionManager(t),
 	}
@@ -56,7 +55,7 @@ func (m *runnerTestMocks) constructParams(sessionName string) session.NewSession
 		},
 		RedisClient: m.redisClient,
 		DriverFactory: func(
-			_ context.Context, _ models.Session, _ redis.Client, _ func(),
+			_ context.Context, _ models.Session, _ goutilsRedis.Client, _ func(),
 		) (session.Driver, error) {
 			return m.driver, nil
 		},
@@ -194,7 +193,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 
 		params := m.constructParams(sessionName)
 		params.DriverFactory = func(
-			_ context.Context, _ models.Session, _ redis.Client, _ func(),
+			_ context.Context, _ models.Session, _ goutilsRedis.Client, _ func(),
 		) (session.Driver, error) {
 			return nil, fmt.Errorf("driver factory boom")
 		}
@@ -638,7 +637,7 @@ func TestSessionRunnerHandleSubmitCommands(t *testing.T) {
 
 		m.redisClient.EXPECT().
 			GetRingBuffer(mock.Anything, session.BuildSessionInputBufferName(sessionID), int64(16384)).
-			Return(nil, models.RedisError{Message: "buffer boom"})
+			Return(nil, goutils.NewRedisError("buffer boom", nil, false))
 
 		var gotErr error
 		called := false
@@ -663,13 +662,13 @@ func TestSessionRunnerHandleSubmitCommands(t *testing.T) {
 			utCtx, t, buildSession(models.SessionRunnerModeTypeCommanded, models.SessionStateReady),
 		)
 
-		ringBuf := mockredis.NewRingBuffer(t)
+		ringBuf := mocktest.NewRedisBufferForTest(t)
 		m.redisClient.EXPECT().
 			GetRingBuffer(mock.Anything, session.BuildSessionInputBufferName(sessionID), int64(16384)).
 			Return(ringBuf, nil)
 		ringBuf.EXPECT().
 			Write(mock.Anything, serialized).
-			Return(0, models.RedisError{Message: "write boom"})
+			Return(0, goutils.NewRedisError("write boom", nil, false))
 
 		var gotErr error
 		called := false
@@ -694,7 +693,7 @@ func TestSessionRunnerHandleSubmitCommands(t *testing.T) {
 			utCtx, t, buildSession(models.SessionRunnerModeTypeCommanded, models.SessionStateReady),
 		)
 
-		ringBuf := mockredis.NewRingBuffer(t)
+		ringBuf := mocktest.NewRedisBufferForTest(t)
 		m.redisClient.EXPECT().
 			GetRingBuffer(mock.Anything, session.BuildSessionInputBufferName(sessionID), int64(16384)).
 			Return(ringBuf, nil)
@@ -1222,7 +1221,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1230,7 +1229,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 		var captured models.IPCMessageEnvelope
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(_ context.Context, message models.IPCMessageEnvelope, _ *time.Duration) {
+			Run(func(_ context.Context, message goutilsRedis.QueueMessageEnvelope, _ *time.Duration) {
 				captured = message
 			}).
 			Return(uint64(1), nil)
@@ -1258,7 +1257,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 		// Non-blocking StopSession only enqueues; the caller does not await the result
 		m.worker.EXPECT().Submit(mock.Anything, mock.Anything).Return(nil)
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1283,7 +1282,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			Submit(mock.Anything, mock.Anything).
 			Return(fmt.Errorf("submit boom"))
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1291,7 +1290,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 		var captured models.IPCMessageEnvelope
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(_ context.Context, message models.IPCMessageEnvelope, _ *time.Duration) {
+			Run(func(_ context.Context, message goutilsRedis.QueueMessageEnvelope, _ *time.Duration) {
 				captured = message
 			}).
 			Return(uint64(1), nil)
@@ -1323,7 +1322,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
-			Return(nil, models.RedisError{Message: "queue boom"})
+			Return(nil, goutils.NewRedisError("queue boom", nil, false))
 
 		err := uut.HandleIPCRequestMessage(buildStopReq(true))
 		assert.NotNil(err)
@@ -1346,13 +1345,13 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Return(uint64(0), models.RedisError{Message: "push boom"})
+			Return(uint64(0), goutils.NewRedisError("push boom", nil, false))
 
 		err := uut.HandleIPCRequestMessage(buildStopReq(true))
 		assert.NotNil(err)
@@ -1417,7 +1416,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1425,7 +1424,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 		var captured models.IPCMessageEnvelope
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(_ context.Context, message models.IPCMessageEnvelope, _ *time.Duration) {
+			Run(func(_ context.Context, message goutilsRedis.QueueMessageEnvelope, _ *time.Duration) {
 				captured = message
 			}).
 			Return(uint64(1), nil)
@@ -1456,7 +1455,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			Submit(mock.Anything, mock.Anything).
 			Return(fmt.Errorf("submit boom"))
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1464,7 +1463,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 		var captured models.IPCMessageEnvelope
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(_ context.Context, message models.IPCMessageEnvelope, _ *time.Duration) {
+			Run(func(_ context.Context, message goutilsRedis.QueueMessageEnvelope, _ *time.Duration) {
 				captured = message
 			}).
 			Return(uint64(1), nil)
@@ -1496,7 +1495,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
-			Return(nil, models.RedisError{Message: "queue boom"})
+			Return(nil, goutils.NewRedisError("queue boom", nil, false))
 
 		err := uut.HandleIPCRequestMessage(buildRunReq())
 		assert.NotNil(err)
@@ -1519,13 +1518,13 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mockredis.NewQueue(t)
+		respQueue := mocktest.NewRedisQueueForTest(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
 		respQueue.EXPECT().
 			PushRight(mock.Anything, mock.Anything, mock.Anything).
-			Return(uint64(0), models.RedisError{Message: "push boom"})
+			Return(uint64(0), goutils.NewRedisError("push boom", nil, false))
 
 		err := uut.HandleIPCRequestMessage(buildRunReq())
 		assert.NotNil(err)

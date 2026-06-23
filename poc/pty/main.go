@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/creack/pty"
@@ -77,7 +77,7 @@ func TestPoC() error {
 func TestPtyDriver() error {
 	log.SetLevel(log.InfoLevel)
 
-	getRedisParams := func() models.RedisConnectionConfig {
+	getRedisParams := func() goutilsRedis.ConnectionConfig {
 		serverHostStr := os.Getenv("UNITTEST_REDIS_HOST")
 		if serverHostStr == "" {
 			serverHostStr = "127.0.0.1"
@@ -101,7 +101,7 @@ func TestPtyDriver() error {
 			log.WithError(err).Fatal("UNITTEST_REDIS_DB is not int")
 		}
 
-		return models.RedisConnectionConfig{
+		return goutilsRedis.ConnectionConfig{
 			Host: serverHostStr, Port: uint16(serverPort), DBNumber: uint32(serverDB),
 		}
 	}
@@ -110,7 +110,7 @@ func TestPtyDriver() error {
 	defer ctxCancel()
 
 	redisParams := getRedisParams()
-	redisClient, err := redis.NewClient(ctx, redisParams)
+	redisClient, err := goutilsRedis.NewClient(ctx, redisParams)
 	if err != nil {
 		return models.RuntimeError{Core: err, Message: "failed to prepare REDIS client"}
 	}

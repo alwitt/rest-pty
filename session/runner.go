@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
 	"github.com/oklog/ulid/v2"
@@ -120,7 +120,7 @@ type runnerImpl struct {
 	driver Driver
 
 	// redisClient client to REDIS
-	redisClient redis.Client
+	redisClient goutilsRedis.Client
 
 	// session this runner is responsible for
 	session models.Session
@@ -147,7 +147,7 @@ type NewSessionRunnerParams struct {
 	PersistenceFactory func() (db.Client, error) `validate:"required"`
 
 	// RedisClient the REDIS client
-	RedisClient redis.Client `validate:"required"`
+	RedisClient goutilsRedis.Client `validate:"required"`
 
 	// DriverFactory session driver factory function
 	DriverFactory driverFactoryFunc `validate:"required"`

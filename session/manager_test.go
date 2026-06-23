@@ -8,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	mockdb "github.com/alwitt/rest-pty/mocks/db"
-	mockredis "github.com/alwitt/rest-pty/mocks/redis"
 	mocksession "github.com/alwitt/rest-pty/mocks/session"
 	mocktest "github.com/alwitt/rest-pty/mocks/test"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/stretchr/testify/assert"
@@ -25,7 +24,7 @@ import (
 type managerTestMocks struct {
 	persistence *mockdb.Client
 	database    *mockdb.Database
-	redisClient *mockredis.Client
+	redisClient *mocktest.RedisClientForTest
 	worker      *mocktest.TaskProcessorForTest
 	runner      *mocksession.Runner
 
@@ -39,7 +38,7 @@ func newManagerTestMocks(t *testing.T) *managerTestMocks {
 	return &managerTestMocks{
 		persistence: mockdb.NewClient(t),
 		database:    mockdb.NewDatabase(t),
-		redisClient: mockredis.NewClient(t),
+		redisClient: mocktest.NewRedisClientForTest(t),
 		worker:      mocktest.NewTaskProcessorForTest(t),
 		runner:      mocksession.NewRunner(t),
 	}
@@ -59,7 +58,7 @@ func (m *managerTestMocks) constructParams(instanceName string) session.NewSessi
 		},
 		RedisClient: m.redisClient,
 		DriverFactory: func(
-			_ context.Context, _ models.Session, _ redis.Client, _ func(),
+			_ context.Context, _ models.Session, _ goutilsRedis.Client, _ func(),
 		) (session.Driver, error) {
 			return nil, fmt.Errorf("driver factory should not be called by the manager directly")
 		},

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/api"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/oklog/ulid/v2"
@@ -143,7 +143,9 @@ func BuildNewServer(
 	// Build persistence client
 
 	// Prepare redis client
-	redisClient, err := redis.NewClient(parentCtx, configs.Redis)
+	redisClient, err := goutilsRedis.NewClient(parentCtx, goutilsRedis.ConnectionConfig{
+		Host: configs.Redis.Host, Port: configs.Redis.Port, DBNumber: configs.Redis.DBNumber,
+	})
 	if err != nil {
 		return nil, models.BootStrapError{Core: err, Message: "Failed to define REDIS client"}
 	}

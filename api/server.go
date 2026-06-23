@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/redis"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
@@ -54,7 +54,7 @@ BuildHTTPServer create server to host session CRUD and IO endpoints
 
 	@param httpCfg models.APIServerConfig - HTTP API server configuration
 	@param persistence db.Client - DB persistence layer
-	@param redisClient redis.Client - redis client
+	@param redisClient goutilsRedis.Client - redis client
 	@param manager session.Manager - session manager
 	@param metrics goutils.HTTPRequestMetricHelper - metric collection agent
 	@returns HTTP server instance
@@ -62,7 +62,7 @@ BuildHTTPServer create server to host session CRUD and IO endpoints
 func BuildHTTPServer(
 	httpCfg models.APIServerConfig,
 	persistence db.Client,
-	redisClient redis.Client,
+	redisClient goutilsRedis.Client,
 	manager session.Manager,
 	metrics goutils.HTTPRequestMetricHelper,
 ) (*http.Server, error) {
