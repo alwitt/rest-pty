@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -327,6 +328,23 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 }
 
 // ======================================================================================
+// Session IO - Output ANSI escape stripping
+
+// ansiEscapeSequence matches ANSI / VT escape sequences in raw terminal output: the 7-bit
+// "ESC <Fe>" forms, the standalone 8-bit C1 controls, and CSI sequences (both the 7-bit "ESC ["
+// and 8-bit 0x9B introducers).
+var ansiEscapeSequence = regexp.MustCompile(
+	`(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~])`,
+)
+
+// stripANSIEscapes removes all ANSI escape sequences from the given output bytes, returning the
+// cleaned slice. Filtering is per-call, so an escape sequence split across two streamed chunks is
+// not stripped; this is acceptable for the line-oriented output the filter targets.
+func stripANSIEscapes(data []byte) []byte {
+	return ansiEscapeSequence.ReplaceAll(data, nil)
+}
+
+// ======================================================================================
 // Session IO - Read One Output Chunk
 
 // SessionOutputChunkResponse response containing one chunk of session output
@@ -353,6 +371,7 @@ type SessionOutputChunkResponse struct {
 // @Param sessionName path string true "Session name"
 // @Param offset query int true "Read index position within the session output stream"
 // @Param limit query int true "Max number of bytes to read"
+// @Param strip_ansi query bool false "Strip ANSI escape sequences from the returned data"
 // @Success 200 {object} SessionOutputChunkResponse "success"
 // @Failure 400 {object} goutils.RestAPIBaseResponse "error"
 // @Failure 403 {object} goutils.RestAPIBaseResponse "error"
@@ -427,6 +446,19 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Parse the optional ANSI-strip flag
+	stripANSI := false
+	if raw := query.Get("strip_ansi"); raw != "" {
+		stripANSI, err = strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Query parameter 'strip_ansi' must be a boolean"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+	}
+
 	// ------------------------------------------------------------------------------------
 	// Fetch the session
 
@@ -488,12 +520,19 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	// ------------------------------------------------------------------------------------
 	// Done
 
+	// The chunk content is stripped of ANSI escapes when requested, but "read" and
+	// "actual_offset" stay in terms of buffer bytes so the client can still advance its offset.
+	outData := readBuf[:readCount]
+	if stripANSI {
+		outData = stripANSIEscapes(outData)
+	}
+
 	respCode = http.StatusOK
 	response = SessionOutputChunkResponse{
 		RestAPIBaseResponse: h.GetStdRESTSuccessMsg(r.Context()),
 		ActualOffset:        actualOffset,
 		Read:                readCount,
-		Data:                base64.StdEncoding.EncodeToString(readBuf[:readCount]),
+		Data:                base64.StdEncoding.EncodeToString(outData),
 	}
 }
 
@@ -518,6 +557,7 @@ const tailStreamReadChunkSize = 4096
 // @Param sessionName path string true "Session name"
 // @Param offset query int true "Read index position to start tailing from"
 // @Param poll_period_msec query int false "Milliseconds between buffer data availability checks (default 250)"
+// @Param strip_ansi query bool false "Strip ANSI escape sequences from the streamed data"
 // @Success 200 {string} string "SSE stream"
 // @Failure 400 {object} goutils.RestAPIBaseResponse "error"
 // @Failure 403 {object} goutils.RestAPIBaseResponse "error"
@@ -584,6 +624,19 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		pollPeriod = time.Duration(parsed) * time.Millisecond
+	}
+
+	// Parse the optional ANSI-strip flag
+	stripANSI := false
+	if raw := query.Get("strip_ansi"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Query parameter 'strip_ansi' must be a boolean"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			writeError(http.StatusBadRequest, msg, err.Error())
+			return
+		}
+		stripANSI = parsed
 	}
 
 	// The SSE stream is written incrementally and flushed after every event, so the response
@@ -662,7 +715,11 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	for {
 		n, readErr := reader.Read(readBuf)
 		if n > 0 {
-			encoded := base64.StdEncoding.EncodeToString(readBuf[:n])
+			chunk := readBuf[:n]
+			if stripANSI {
+				chunk = stripANSIEscapes(chunk)
+			}
+			encoded := base64.StdEncoding.EncodeToString(chunk)
 			if _, err := fmt.Fprintf(w, "event: output\ndata: %s\n\n", encoded); err != nil {
 				// The client connection is likely gone; stop streaming.
 				log.WithError(err).WithFields(logTags).Debug("Output stream write failed; ending stream")

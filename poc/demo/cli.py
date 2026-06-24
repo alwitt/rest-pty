@@ -492,8 +492,15 @@ def session_ctrl(ctx, character):
     required=True,
     help="Max number of bytes to read (server caps this at the buffer capacity).",
 )
+@click.option(
+    "--strip-ansi",
+    "-s",
+    is_flag=True,
+    default=False,
+    help="Ask the server to strip ANSI escape sequences from the returned data.",
+)
 @click.pass_context
-def session_read(ctx, offset, length):
+def session_read(ctx, offset, length, strip_ansi):
     """Read one chunk from the session's output ring buffer.
 
     The requested offset may have aged out of the buffer; in that case the read
@@ -501,9 +508,13 @@ def session_read(ctx, offset, length):
     data actually starts. The decoded bytes are written to stdout, with a
     summary on stderr.
     """
+    params = {"offset": offset, "limit": length}
+    if strip_ansi:
+        params["strip_ansi"] = "true"
+
     resp = requests.get(
         output_chunk_url(ctx.obj["base_url"], ctx.obj["session_name"]),
-        params={"offset": offset, "limit": length},
+        params=params,
     )
 
     # On error, surface the standard JSON envelope and exit non-zero.
@@ -537,8 +548,15 @@ def session_read(ctx, offset, length):
     default=None,
     help="Milliseconds between buffer availability checks (server default 250).",
 )
+@click.option(
+    "--strip-ansi",
+    "-s",
+    is_flag=True,
+    default=False,
+    help="Ask the server to strip ANSI escape sequences from the streamed data.",
+)
 @click.pass_context
-def session_tail(ctx, start_at, poll_period_msec):
+def session_tail(ctx, start_at, poll_period_msec, strip_ansi):
     """Stream the session's output via server-sent events until Ctrl-C.
 
     Each SSE event carries a base64 chunk from the output ring buffer; the raw
@@ -547,6 +565,8 @@ def session_tail(ctx, start_at, poll_period_msec):
     params = {"offset": start_at}
     if poll_period_msec is not None:
         params["poll_period_msec"] = poll_period_msec
+    if strip_ansi:
+        params["strip_ansi"] = "true"
 
     out = sys.stdout.buffer
     try:
