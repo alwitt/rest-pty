@@ -3,6 +3,8 @@ package models
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/alwitt/goutils"
 )
 
 // SessionInputCommandTypeENUMType session input command type ENUM
@@ -55,25 +57,29 @@ func (c SessionInputCommand) IsValid() error {
 	case SessionInputCommandTypeText:
 		// An empty string is allowed (a no-op); a missing Content is not.
 		if c.Content == nil {
-			return BadInputError{Message: "TEXT command requires content"}
+			return goutils.NewValidationError("TEXT command requires content", nil, true)
 		}
 
 	case SessionInputCommandTypeCTRL:
 		// Content holds a single letter (e.g. "C" for CTRL+C).
 		if c.Content == nil || len(*c.Content) != 1 {
-			return BadInputError{Message: "CTRL command requires a single-character content"}
+			return goutils.NewValidationError(
+				"CTRL command requires a single-character content", nil, true,
+			)
 		}
 		if !isASCIILetter((*c.Content)[0]) {
-			return BadInputError{
-				Message: fmt.Sprintf("CTRL content %q is not an ASCII letter", *c.Content),
-			}
+			return goutils.NewValidationError(
+				fmt.Sprintf("CTRL content %q is not an ASCII letter", *c.Content), nil, true,
+			)
 		}
 
 	case SessionInputCommandTypeCR:
 		// Content is ignored.
 
 	default:
-		return BadInputError{Message: fmt.Sprintf("unsupported command type %q", c.Type)}
+		return goutils.NewValidationError(
+			fmt.Sprintf("unsupported command type %q", c.Type), nil, true,
+		)
 	}
 
 	return nil
@@ -90,7 +96,9 @@ func BuildStdinInputFromCommands(cmds []SessionInputCommand) ([]byte, error) {
 
 	for idx, cmd := range cmds {
 		if err := cmd.IsValid(); err != nil {
-			return nil, BadInputError{Core: err, Message: fmt.Sprintf("command %d", idx)}
+			return nil, goutils.NewBadInputError(
+				fmt.Sprintf("bad command %d in sequence", idx), err, true,
+			)
 		}
 
 		switch cmd.Type {

@@ -72,12 +72,12 @@ func BuildHTTPServer(
 		persistence, manager, httpCfg.APIs.RequestLogging, metrics,
 	)
 	if err != nil {
-		return nil, models.RuntimeError{Core: err, Message: "Failed to define management API handler"}
+		return nil, goutils.NewRuntimeError("Failed to define management API handler", err, true)
 	}
 
 	ioAPI, err := NewSessionIOHandler(persistence, redisClient, httpCfg.APIs.RequestLogging, metrics)
 	if err != nil {
-		return nil, models.RuntimeError{Core: err, Message: "Failed to define session IO API handler"}
+		return nil, goutils.NewRuntimeError("Failed to define session IO API handler", err, true)
 	}
 
 	router := mux.NewRouter()

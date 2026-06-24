@@ -262,7 +262,7 @@ func TestSessionIOHandlerSubmitUserCommand(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "missing").
-			Return(models.Session{}, models.UnknownSessionError{Message: "unknown"}).
+			Return(models.Session{}, goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -290,7 +290,7 @@ func TestSessionIOHandlerSubmitUserCommand(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "test-session").
-			Return(models.Session{}, models.PersistenceError{Message: "dummy error"}).
+			Return(models.Session{}, models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -566,7 +566,7 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "missing").
-			Return(models.Session{}, models.UnknownSessionError{Message: "unknown"}).
+			Return(models.Session{}, goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -602,7 +602,7 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 			Once()
 		buffer.EXPECT().
 			ReadAt(mock.Anything, mock.Anything, int64(0)).
-			Return(int64(0), 0, int64(0), models.PersistenceError{Message: "boom"}).
+			Return(int64(0), 0, int64(0), models.NewPersistenceError("boom", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -806,7 +806,7 @@ func TestSessionIOHandlerTailSessionOutput(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "missing").
-			Return(models.Session{}, models.UnknownSessionError{Message: "unknown"}).
+			Return(models.Session{}, goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -836,7 +836,7 @@ func TestSessionIOHandlerTailSessionOutput(t *testing.T) {
 			Once()
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
-			Return(nil, models.PersistenceError{Message: "boom"}).
+			Return(nil, models.NewPersistenceError("boom", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(

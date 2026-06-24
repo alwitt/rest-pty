@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
@@ -171,7 +172,7 @@ func TestDBCreateSession(t *testing.T) {
 				return err
 			},
 		)
-		var validationErr models.ValidationError
+		var validationErr goutils.ValidationError
 		assert.Truef(errors.As(err, &validationErr),
 			"expected ValidationError for case '%s', got %v", testCase.label, err)
 	}
@@ -355,7 +356,7 @@ func TestDBUpdateBasicSessionParams(t *testing.T) {
 			return dbClient.UpdateSessionName(ctx, unknownName, "whatever")
 		},
 	)
-	var unknownErr models.UnknownSessionError
+	var unknownErr goutils.NotFoundError
 	assert.True(errors.As(nameErr, &unknownErr))
 	descErr := uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
@@ -370,7 +371,7 @@ func TestDBUpdateBasicSessionParams(t *testing.T) {
 			return dbClient.UpdateSessionName(ctx, newName, "invalid name!")
 		},
 	)
-	var validationErr models.ValidationError
+	var validationErr goutils.ValidationError
 	assert.True(errors.As(invalidNameErr, &validationErr))
 }
 
@@ -470,7 +471,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	))
 
 	// Invalid values are rejected with a ValidationError (session is IDLE here)
-	var validationErr models.ValidationError
+	var validationErr goutils.ValidationError
 	tinyCapErr := uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, 1024)
@@ -491,7 +492,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	assert.True(errors.As(badRunModeErr, &validationErr))
 
 	// Updating an unknown session is rejected with an UnknownSessionError
-	var unknownErr models.UnknownSessionError
+	var unknownErr goutils.NotFoundError
 	unknownName := fmt.Sprintf("missing-%s", ulid.Make().String())
 	unknownCapErr := uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
@@ -563,7 +564,7 @@ func TestDBUpdateSessionDriverParameters(t *testing.T) {
 			return dbClient.UpdateSessionDriver(ctx, sessionName, newDriverParams)
 		},
 	)
-	var consistencyErr models.ConsistencyError
+	var consistencyErr goutils.ConsistencyError
 	assert.True(errors.As(nonIdleErr, &consistencyErr))
 
 	// Return the session to IDLE so updates are permitted again
@@ -574,7 +575,7 @@ func TestDBUpdateSessionDriverParameters(t *testing.T) {
 	))
 
 	// Case 1: an unsupported driver parameter data type is rejected with a ValidationError
-	var validationErr models.ValidationError
+	var validationErr goutils.ValidationError
 	badTypeErr := uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionDriver(ctx, sessionName, "not-a-driver-params")
@@ -622,7 +623,7 @@ func TestDBUpdateSessionDriverParameters(t *testing.T) {
 			)
 		},
 	)
-	var unknownSessionErr models.UnknownSessionError
+	var unknownSessionErr goutils.NotFoundError
 	assert.True(errors.As(unknownErr, &unknownSessionErr))
 }
 
@@ -721,7 +722,7 @@ func TestDBDeleteSession(t *testing.T) {
 			return dbClient.DeleteSession(ctx, fmt.Sprintf("missing-%s", ulid.Make().String()))
 		},
 	)
-	var unknownSessionErr models.UnknownSessionError
+	var unknownSessionErr goutils.NotFoundError
 	assert.True(errors.As(unknownErr, &unknownSessionErr))
 }
 
@@ -910,6 +911,6 @@ func TestDBListSessionsPagination(t *testing.T) {
 			return err
 		},
 	)
-	var validationErr models.ValidationError
+	var validationErr goutils.ValidationError
 	assert.True(errors.As(invalidErr, &validationErr))
 }

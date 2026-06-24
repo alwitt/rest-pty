@@ -69,9 +69,9 @@ func NewSessionManagerHandler(
 	}
 
 	if err := models.RegisterWithValidator(handler.validate); err != nil {
-		return handler, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return handler, goutils.NewRuntimeError(
+			"failed to install custom validation macros", err, true,
+		)
 	}
 
 	return handler, nil
@@ -457,7 +457,7 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 			return err
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -542,8 +542,8 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, newCap)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -623,8 +623,8 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 			return dbClient.UpdateSessionRunMode(ctx, sessionName, newMode)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -724,8 +724,8 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 			return dbClient.UpdateSessionCommand(ctx, sessionName, newCommand)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -862,9 +862,9 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 			return dbClient.UpdateSessionDriver(ctx, sessionName, driverMetadata)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
-		var validation models.ValidationError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
+		var validation goutils.ValidationError
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -947,7 +947,7 @@ func (h SessionManagerHandler) UpdateSessionName(w http.ResponseWriter, r *http.
 			return dbClient.UpdateSessionName(ctx, sessionName, newName)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -1047,7 +1047,7 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 			return dbClient.UpdateSessionDescription(ctx, sessionName, params.Description)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -1102,8 +1102,8 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 			return dbClient.DeleteSession(ctx, sessionName)
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -1177,8 +1177,8 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 
 	// Start the session
 	if err := h.manager.StartSession(r.Context(), sessionName, blocking); err != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
@@ -1252,8 +1252,8 @@ func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Reques
 
 	// Stop the session
 	if err := h.manager.StopSession(r.Context(), sessionName, blocking); err != nil {
-		var unknownSession models.UnknownSessionError
-		var consistency models.ConsistencyError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"

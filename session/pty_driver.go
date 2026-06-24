@@ -47,21 +47,19 @@ func newPTYCoreDriver(
 
 	validate := validator.New()
 	if err := models.RegisterWithValidator(validate); err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return nil, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
 	driverMeta, err := session.ParseDriverMetadata(validate)
 	if err != nil {
-		return nil, models.ValidationError{
-			Core: err, Message: "failed to parse PTY driver metadata for session " + session.Name,
-		}
+		return nil, goutils.NewValidationError(
+			"failed to parse PTY driver metadata for session "+session.Name, err, true,
+		)
 	}
 
 	castMeta, ok := driverMeta.(models.SessionDriverPTYParams)
 	if !ok {
-		return nil, models.ConsistencyError{Message: "metadata for PTY driver is wrong type"}
+		return nil, goutils.NewConsistencyError("metadata for PTY driver is wrong type", nil, true)
 	}
 
 	instance := &ptyDriver{
@@ -95,9 +93,7 @@ func (d *ptyDriver) Setup() error {
 	coreCmd := exec.Command(d.session.Command.Command, d.session.Command.Arguments...)
 	ptyFile, err := pty.Start(coreCmd)
 	if err != nil {
-		return models.PTYError{Core: err, Message: fmt.Sprintf(
-			"failed to start PTY for '%s'", cmdDisplayStr,
-		)}
+		return models.NewPTYError(fmt.Sprintf("failed to start PTY for '%s'", cmdDisplayStr), err, true)
 	}
 
 	{
@@ -113,7 +109,7 @@ func (d *ptyDriver) Setup() error {
 		_ = ptyFile.Close()
 		_ = coreCmd.Process.Kill()
 		_ = coreCmd.Wait() // reap
-		return models.PTYError{Core: err, Message: "failed to set PTY screen size"}
+		return models.NewPTYError("failed to set PTY screen size", err, true)
 	}
 
 	d.coreCmd = coreCmd
@@ -125,13 +121,19 @@ func (d *ptyDriver) Setup() error {
 // PipeInput pipe user input into the process
 func (d *ptyDriver) PipeInput(input io.Reader) error {
 	_, err := io.Copy(d.ptyHandle, input)
-	return err
+	if err != nil {
+		return models.NewPTYError("PTY INPUT pipe failure", err, true)
+	}
+	return nil
 }
 
 // PipeOutput pipe process output into buffer
 func (d *ptyDriver) PipeOutput(output io.Writer) error {
 	_, err := io.Copy(output, d.ptyHandle)
-	return err
+	if err != nil {
+		return models.NewPTYError("PTY OUTPUT pipe failure", err, true)
+	}
+	return nil
 }
 
 // Wait for the process to stop
@@ -140,6 +142,9 @@ func (d *ptyDriver) Wait() error {
 	// The child has been reaped; its PID is now free to be recycled, so signal `TearDown` to
 	// stop using it as a kill target.
 	d.reaped.Store(true)
+	if err != nil {
+		return models.NewPTYError("PTY completion wait failure", err, true)
+	}
 	return err
 }
 
@@ -158,18 +163,18 @@ func (d *ptyDriver) TearDown() error {
 	if d.coreCmd != nil && !d.reaped.Load() {
 		err := syscall.Kill(-d.coreCmd.Process.Pid, syscall.SIGKILL)
 		if err != nil && !errors.Is(err, syscall.ESRCH) {
-			return models.RuntimeError{
-				Core: err, Message: "session " + d.session.Name + " core command kill failed",
-			}
+			return models.NewPTYError(
+				"session "+d.session.Name+" core command kill failed", err, true,
+			)
 		}
 	}
 
 	// Stop the PTY
 	if d.ptyHandle != nil {
 		if err := d.ptyHandle.Close(); err != nil {
-			return models.RuntimeError{
-				Core: err, Message: "session " + d.session.Name + " PTY failed on shutdown",
-			}
+			return models.NewPTYError(
+				"session "+d.session.Name+" PTY failed on shutdown", err, true,
+			)
 		}
 	}
 

@@ -1,325 +1,173 @@
 package models
 
-import "fmt"
-
-// ======================================================================================
-// General Errors
-
-// BadInputError malformed data input error
-type BadInputError struct {
-	Core    error
-	Message string
-}
-
-// Error implement error interface
-func (e BadInputError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
-	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e BadInputError) Unwrap() error {
-	return e.Core
-}
-
-// ValidationError error when data fails validation
-type ValidationError struct {
-	Core    error
-	Message string
-}
-
-// Error implement error interface
-func (e ValidationError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
-	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e ValidationError) Unwrap() error {
-	return e.Core
-}
-
-// ConsistencyError a data consistency error
-type ConsistencyError struct {
-	Core    error
-	Message string
-}
-
-// Error implement error interface
-func (e ConsistencyError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
-	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e ConsistencyError) Unwrap() error {
-	return e.Core
-}
-
-// RuntimeError general runtime error
-type RuntimeError struct {
-	Core    error
-	Message string
-}
-
-// Error implement error interface
-func (e RuntimeError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
-	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e RuntimeError) Unwrap() error {
-	return e.Core
-}
+import (
+	"github.com/alwitt/goutils"
+)
 
 // ======================================================================================
 // PTY Errors
 
 // PTYError PTY specific error
-type PTYError struct {
-	Core    error
-	Message string
-}
+type PTYError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e PTYError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewPTYError builds a PTYError, optionally capturing the call stack.
+func NewPTYError(message string, core error, getCallStack bool) PTYError {
+	base := goutils.BaseError{Name: "PTYError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e PTYError) Unwrap() error {
-	return e.Core
+	return PTYError{BaseError: base}
 }
 
 // ======================================================================================
 // Persistence Errors - SQL
 
 // PersistenceError error encountered with persistence
-type PersistenceError struct {
-	Core    error
-	Message string
-}
+type PersistenceError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e PersistenceError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewPersistenceError builds a PersistenceError, optionally capturing the call stack.
+func NewPersistenceError(message string, core error, getCallStack bool) PersistenceError {
+	base := goutils.BaseError{Name: "PersistenceError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e PersistenceError) Unwrap() error {
-	return e.Core
-}
-
-// UnknownSessionError a call referenced an unknown session
-type UnknownSessionError struct {
-	Core    error
-	Message string
-}
-
-// Error implement error interface
-func (e UnknownSessionError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
-	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e UnknownSessionError) Unwrap() error {
-	return e.Core
+	return PersistenceError{BaseError: base}
 }
 
 // ======================================================================================
 // Session Runner Errors
 
 // SessionRunnerStartUpError error during session runner `StartSession`
-type SessionRunnerStartUpError struct {
-	Core    error
-	Message string
-}
+type SessionRunnerStartUpError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionRunnerStartUpError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionRunnerStartUpError builds a SessionRunnerStartUpError, optionally
+// capturing the call stack.
+func NewSessionRunnerStartUpError(
+	message string, core error, getCallStack bool,
+) SessionRunnerStartUpError {
+	base := goutils.BaseError{Name: "SessionRunnerStartUpError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionRunnerStartUpError) Unwrap() error {
-	return e.Core
+	return SessionRunnerStartUpError{BaseError: base}
 }
 
 // SessionRunnerShutdownError error during session runner `StopSession`
-type SessionRunnerShutdownError struct {
-	Core    error
-	Message string
-}
+type SessionRunnerShutdownError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionRunnerShutdownError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionRunnerShutdownError builds a SessionRunnerShutdownError, optionally
+// capturing the call stack.
+func NewSessionRunnerShutdownError(
+	message string, core error, getCallStack bool,
+) SessionRunnerShutdownError {
+	base := goutils.BaseError{Name: "SessionRunnerShutdownError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionRunnerShutdownError) Unwrap() error {
-	return e.Core
+	return SessionRunnerShutdownError{BaseError: base}
 }
 
 // SessionRunnerSubmitCommandError error when session runner submit commands to driver
-type SessionRunnerSubmitCommandError struct {
-	Core    error
-	Message string
-}
+type SessionRunnerSubmitCommandError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionRunnerSubmitCommandError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionRunnerSubmitCommandError builds a SessionRunnerSubmitCommandError, optionally
+// capturing the call stack.
+func NewSessionRunnerSubmitCommandError(
+	message string, core error, getCallStack bool,
+) SessionRunnerSubmitCommandError {
+	base := goutils.BaseError{Name: "SessionRunnerSubmitCommandError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionRunnerSubmitCommandError) Unwrap() error {
-	return e.Core
+	return SessionRunnerSubmitCommandError{BaseError: base}
 }
 
 // SessionRunnerIPCProcessError error session runner encountered processing IPC messages
-type SessionRunnerIPCProcessError struct {
-	Core    error
-	Message string
-}
+type SessionRunnerIPCProcessError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionRunnerIPCProcessError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionRunnerIPCProcessError builds a SessionRunnerIPCProcessError, optionally
+// capturing the call stack.
+func NewSessionRunnerIPCProcessError(
+	message string, core error, getCallStack bool,
+) SessionRunnerIPCProcessError {
+	base := goutils.BaseError{Name: "SessionRunnerIPCProcessError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionRunnerIPCProcessError) Unwrap() error {
-	return e.Core
+	return SessionRunnerIPCProcessError{BaseError: base}
 }
 
 // ======================================================================================
 // Session Manager Errors
 
 // SessionManagerStartSessionError error session manager start session runner
-type SessionManagerStartSessionError struct {
-	Core    error
-	Message string
-}
+type SessionManagerStartSessionError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionManagerStartSessionError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionManagerStartSessionError builds a SessionManagerStartSessionError, optionally
+// capturing the call stack.
+func NewSessionManagerStartSessionError(
+	message string, core error, getCallStack bool,
+) SessionManagerStartSessionError {
+	base := goutils.BaseError{Name: "SessionManagerStartSessionError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionManagerStartSessionError) Unwrap() error {
-	return e.Core
+	return SessionManagerStartSessionError{BaseError: base}
 }
 
 // SessionManagerStopSessionError error session manager stop session runner
-type SessionManagerStopSessionError struct {
-	Core    error
-	Message string
-}
+type SessionManagerStopSessionError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionManagerStopSessionError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionManagerStopSessionError builds a SessionManagerStopSessionError, optionally
+// capturing the call stack.
+func NewSessionManagerStopSessionError(
+	message string, core error, getCallStack bool,
+) SessionManagerStopSessionError {
+	base := goutils.BaseError{Name: "SessionManagerStopSessionError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionManagerStopSessionError) Unwrap() error {
-	return e.Core
+	return SessionManagerStopSessionError{BaseError: base}
 }
 
 // SessionManagerStopAllSessionsError error session manager bulk stop session runners
-type SessionManagerStopAllSessionsError struct {
-	Core    error
-	Message string
-}
+type SessionManagerStopAllSessionsError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e SessionManagerStopAllSessionsError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewSessionManagerStopAllSessionsError builds a SessionManagerStopAllSessionsError, optionally
+// capturing the call stack.
+func NewSessionManagerStopAllSessionsError(
+	message string, core error, getCallStack bool,
+) SessionManagerStopAllSessionsError {
+	base := goutils.BaseError{Name: "SessionManagerStopAllSessionsError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e SessionManagerStopAllSessionsError) Unwrap() error {
-	return e.Core
+	return SessionManagerStopAllSessionsError{BaseError: base}
 }
 
 // ======================================================================================
 // Application Lifecycle Errors
 
 // BootStrapError application boot strap error
-type BootStrapError struct {
-	Core    error
-	Message string
-}
+type BootStrapError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e BootStrapError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewBootStrapError builds a BootStrapError, optionally capturing the call stack.
+func NewBootStrapError(message string, core error, getCallStack bool) BootStrapError {
+	base := goutils.BaseError{Name: "BootStrapError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e BootStrapError) Unwrap() error {
-	return e.Core
+	return BootStrapError{BaseError: base}
 }
 
 // ShutdownError application shutdown error
-type ShutdownError struct {
-	Core    error
-	Message string
-}
+type ShutdownError struct{ goutils.BaseError }
 
-// Error implement error interface
-func (e ShutdownError) Error() string {
-	if e.Core != nil {
-		return fmt.Sprintf("%s [%v]", e.Message, e.Core)
+// NewShutdownError builds a ShutdownError, optionally capturing the call stack.
+func NewShutdownError(message string, core error, getCallStack bool) ShutdownError {
+	base := goutils.BaseError{Name: "ShutdownError", Message: message, Core: core}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
 	}
-	return e.Message
-}
-
-// Unwrap implement wrapped error
-func (e ShutdownError) Unwrap() error {
-	return e.Core
+	return ShutdownError{BaseError: base}
 }

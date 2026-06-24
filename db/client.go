@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/alwitt/goutils"
-	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -76,7 +75,7 @@ func NewConnection(
 		SkipDefaultTransaction: true,
 	})
 	if err != nil {
-		return nil, models.PersistenceError{Core: err, Message: "failed to connect with DB"}
+		return nil, goutils.NewRuntimeError("failed to connect with DB", err, true)
 	}
 
 	instance := &clientImpl{
@@ -118,7 +117,7 @@ func (c *clientImpl) UseDatabaseInTransaction(
 	return c.RunSQLInTransaction(ctx, func(ctx context.Context, tx *gorm.DB) error {
 		dbClient, err := newDatabase(ctx, tx)
 		if err != nil {
-			return models.PersistenceError{Core: err, Message: "failed to define `Database` instance"}
+			return goutils.NewRuntimeError("failed to define `Database` instance", err, true)
 		}
 		return coreLogic(ctx, dbClient)
 	})

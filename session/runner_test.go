@@ -142,7 +142,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		uut, err := session.NewSessionRunner(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var validationErr models.ValidationError
+		var validationErr goutils.ValidationError
 		assert.True(errors.As(err, &validationErr))
 	})
 
@@ -160,7 +160,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		uut, err := session.NewSessionRunner(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -170,7 +170,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		utCtx := context.Background()
 		m := newRunnerTestMocks(t)
 
-		loadErr := models.UnknownSessionError{Message: "no such session"}
+		loadErr := goutils.NewNotFoundError("no such session", nil, false)
 		expectSessionLoad(m, models.Session{}, loadErr)
 
 		params := m.constructParams(sessionName)
@@ -179,7 +179,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		assert.Nil(uut)
 		assert.NotNil(err)
 		// The transaction error is surfaced as-is
-		var unknownErr models.UnknownSessionError
+		var unknownErr goutils.NotFoundError
 		assert.True(errors.As(err, &unknownErr))
 	})
 
@@ -201,7 +201,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		uut, err := session.NewSessionRunner(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -227,7 +227,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		uut, err := session.NewSessionRunner(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -247,7 +247,7 @@ func TestSessionRunnerConstruct(t *testing.T) {
 		uut, err := session.NewSessionRunner(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -320,7 +320,7 @@ func TestSessionRunnerHandleStartSession(t *testing.T) {
 
 		m.driver.EXPECT().
 			Start(mock.Anything).
-			Return(models.RuntimeError{Message: "driver boom"})
+			Return(goutils.NewRuntimeError("driver boom", nil, false))
 		// MarkSessionReady is intentionally NOT expected: the handler must bail before it
 
 		var gotErr error
@@ -346,7 +346,7 @@ func TestSessionRunnerHandleStartSession(t *testing.T) {
 
 		m.driver.EXPECT().
 			Start(mock.Anything).
-			Return(models.ConsistencyError{Message: "already running"})
+			Return(goutils.NewConsistencyError("already running", nil, false))
 		m.database.EXPECT().MarkSessionReady(mock.Anything, sessionName).Return(nil)
 
 		var gotErr error
@@ -371,7 +371,7 @@ func TestSessionRunnerHandleStartSession(t *testing.T) {
 		m.driver.EXPECT().Start(mock.Anything).Return(nil)
 		m.database.EXPECT().
 			MarkSessionReady(mock.Anything, sessionName).
-			Return(models.PersistenceError{Message: "db boom"})
+			Return(models.NewPersistenceError("db boom", nil, false))
 
 		var gotErr error
 		called := false
@@ -445,7 +445,7 @@ func TestSessionRunnerHandleStopSession(t *testing.T) {
 
 		m.driver.EXPECT().
 			Stop(mock.Anything).
-			Return(models.RuntimeError{Message: "driver boom"})
+			Return(goutils.NewRuntimeError("driver boom", nil, false))
 		// Neither MarkSessionIdle nor SessionIdleNotify are expected: the handler must bail first
 
 		var gotErr error
@@ -471,7 +471,7 @@ func TestSessionRunnerHandleStopSession(t *testing.T) {
 
 		m.driver.EXPECT().
 			Stop(mock.Anything).
-			Return(models.ConsistencyError{Message: "already stopped"})
+			Return(goutils.NewConsistencyError("already stopped", nil, false))
 		m.database.EXPECT().MarkSessionIdle(mock.Anything, sessionName).Return(nil)
 		notified := make(chan struct{})
 		m.dummyManager.EXPECT().SessionIdleNotify().Run(func() { close(notified) }).Return()
@@ -504,7 +504,7 @@ func TestSessionRunnerHandleStopSession(t *testing.T) {
 		m.driver.EXPECT().Stop(mock.Anything).Return(nil)
 		m.database.EXPECT().
 			MarkSessionIdle(mock.Anything, sessionName).
-			Return(models.PersistenceError{Message: "db boom"})
+			Return(models.NewPersistenceError("db boom", nil, false))
 		// SessionIdleNotify is intentionally NOT expected: it only fires after a successful transition
 
 		var gotErr error
@@ -813,7 +813,7 @@ func TestSessionRunnerStartSession(t *testing.T) {
 
 		uut := m.buildRunner(utCtx, t, testSession)
 
-		handlerErr := models.SessionRunnerStartUpError{Message: "handler boom"}
+		handlerErr := models.NewSessionRunnerStartUpError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {
@@ -941,7 +941,7 @@ func TestSessionRunnerStopSession(t *testing.T) {
 
 		uut := m.buildRunner(utCtx, t, testSession)
 
-		handlerErr := models.SessionRunnerShutdownError{Message: "handler boom"}
+		handlerErr := models.NewSessionRunnerShutdownError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {
@@ -1044,7 +1044,7 @@ func TestSessionRunnerSubmitCommands(t *testing.T) {
 
 		uut := m.buildRunner(utCtx, t, testSession)
 
-		handlerErr := models.SessionRunnerSubmitCommandError{Message: "handler boom"}
+		handlerErr := models.NewSessionRunnerSubmitCommandError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {

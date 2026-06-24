@@ -169,28 +169,26 @@ NewSessionRunner define a new runner to operate a particular PTY session
 	@param parentCtx context.Context - parent context for the runner
 	@param params NewSessionRunnerParams - initialization parameters
 	@returns new runner
-	@returns `models.RuntimeError` sub-component initialization failed
+	@returns `goutils.RuntimeError` sub-component initialization failed
 	@returns `models.UnknownSessionError` referenced session is unknown
 	@returns `models.PersistenceError` persistence layer failure
 */
 func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) (Runner, error) {
 	validate := validator.New()
 	if err := models.RegisterWithValidator(validate); err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return nil, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
 	// Validate initialization parameters
 	if err := validate.Struct(&params); err != nil {
-		return nil, models.ValidationError{Core: err, Message: "session runner init param invalid"}
+		return nil, goutils.NewValidationError("session runner init param invalid", err, true)
 	}
 
 	persistence, err := params.PersistenceFactory()
 	if err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to prepare scoped persistence for PTY runner",
-		}
+		return nil, goutils.NewRuntimeError(
+			"failed to prepare scoped persistence for PTY runner", err, true,
+		)
 	}
 
 	var session models.Session
@@ -201,7 +199,7 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 			return err
 		},
 	); dbErr != nil {
-		return nil, dbErr
+		return nil, goutils.NewRuntimeError("unable to load session "+params.SessionName, dbErr, true)
 	}
 
 	logTags := log.Fields{
@@ -247,7 +245,7 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 		},
 	)
 	if err != nil {
-		return nil, models.RuntimeError{Core: err, Message: "failed to define session driver"}
+		return nil, goutils.NewRuntimeError("failed to define session driver", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -268,7 +266,7 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 		nil,
 	)
 	if err != nil {
-		return nil, models.RuntimeError{Core: err, Message: "failed to define worker task engine"}
+		return nil, goutils.NewRuntimeError("failed to define worker task engine", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -285,9 +283,9 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(runnerReqStartSession{}),
-		)}
+		), err, true)
 	}
 
 	// Pending request to stop the session
@@ -301,9 +299,9 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(runnerReqStopSession{}),
-		)}
+		), err, true)
 	}
 
 	// Pending request to submit commands to a session
@@ -317,9 +315,9 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(runnerReqSubmitCommands{}),
-		)}
+		), err, true)
 	}
 
 	return instance, nil
@@ -340,7 +338,7 @@ func (r *runnerImpl) Start(_ context.Context) error {
 	// Start the task engine
 
 	if err := r.worker.StartEventLoop(&r.wg); err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to start session support worker"}
+		return goutils.NewRuntimeError("failed to start session support worker", err, true)
 	}
 
 	return nil
@@ -360,15 +358,15 @@ func (r *runnerImpl) Stop(ctx context.Context) error {
 	}
 
 	if err := r.worker.StopEventLoop(); err != nil {
-		stopErr = models.RuntimeError{
-			Core: err, Message: "failed to stop session " + r.sessionName + " worker tasks",
-		}
+		stopErr = goutils.NewRuntimeError(
+			"failed to stop session "+r.sessionName+" worker tasks", err, true,
+		)
 	}
 
 	if err := goutils.TimeBoundedWaitGroupWait(ctx, &r.wg, time.Second*10); err != nil {
-		stopErr = models.RuntimeError{
-			Core: err, Message: "session " + r.sessionName + " support threads did not stop in time",
-		}
+		stopErr = goutils.NewRuntimeError(
+			"session "+r.sessionName+" support threads did not stop in time", err, true,
+		)
 	}
 
 	return stopErr
@@ -407,10 +405,9 @@ func (r *runnerImpl) StartSession(ctx context.Context, blocking bool) error {
 		if err := r.worker.Submit(
 			ctx, runnerReqStartSession{OnComplete: r.logOnlyCompletion("start-session")},
 		); err != nil {
-			return models.SessionRunnerStartUpError{
-				Core:    err,
-				Message: "failed to submit start request to session " + r.sessionName + " driver",
-			}
+			return models.NewSessionRunnerStartUpError(
+				"failed to submit start request to session "+r.sessionName+" driver", err, true,
+			)
 		}
 		return nil
 	}
@@ -430,26 +427,25 @@ func (r *runnerImpl) StartSession(ctx context.Context, blocking bool) error {
 	}
 
 	if err := r.worker.Submit(ctx, runnerReqStartSession{OnComplete: respCapture}); err != nil {
-		return models.SessionRunnerStartUpError{
-			Core:    err,
-			Message: "failed to submit start request to session " + r.sessionName + " driver",
-		}
+		return models.NewSessionRunnerStartUpError(
+			"failed to submit start request to session "+r.sessionName+" driver", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionRunnerStartUpError{
-				Message: "session " + r.sessionName + " start request context ended",
-			}
+			return models.NewSessionRunnerStartUpError(
+				"session "+r.sessionName+" start request context ended", nil, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionRunnerStartUpError{
-				Message: "session " + r.sessionName + " request-start response channel closed",
-			}
+			return models.NewSessionRunnerStartUpError(
+				"session "+r.sessionName+" request-start response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -476,11 +472,11 @@ func (r *runnerImpl) HandleStartSession(onComplete func(ctx context.Context, err
 	// A ConsistencyError means the driver is already running; treat that as idempotent success and
 	// proceed to (re)assert the session state.
 	if err := r.driver.Start(r.workingCtx); err != nil {
-		var consistencyErr models.ConsistencyError
+		var consistencyErr goutils.ConsistencyError
 		if !errors.As(err, &consistencyErr) {
-			exitErr := models.SessionRunnerStartUpError{
-				Core: err, Message: "failed to start session " + r.sessionName + " driver",
-			}
+			exitErr := models.NewSessionRunnerStartUpError(
+				"failed to start session "+r.sessionName+" driver", err, true,
+			)
 			log.WithError(exitErr).WithFields(logTags).Error("Session driver failed to start")
 			onComplete(r.workingCtx, exitErr)
 			return exitErr
@@ -499,9 +495,9 @@ func (r *runnerImpl) HandleStartSession(onComplete func(ctx context.Context, err
 			return err
 		},
 	); dbErr != nil {
-		exitErr := models.SessionRunnerStartUpError{
-			Core: dbErr, Message: "failed to transition session " + r.sessionName + " to READY",
-		}
+		exitErr := models.NewSessionRunnerStartUpError(
+			"failed to transition session "+r.sessionName+" to READY", dbErr, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session transition to READY failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -532,10 +528,9 @@ func (r *runnerImpl) StopSession(ctx context.Context, blocking bool) error {
 		if err := r.worker.Submit(
 			ctx, runnerReqStopSession{OnComplete: r.logOnlyCompletion("stop-session")},
 		); err != nil {
-			return models.SessionRunnerShutdownError{
-				Core:    err,
-				Message: "failed to submit stop request to session " + r.sessionName + " driver",
-			}
+			return models.NewSessionRunnerShutdownError(
+				"failed to submit stop request to session "+r.sessionName+" driver", err, true,
+			)
 		}
 		return nil
 	}
@@ -555,26 +550,25 @@ func (r *runnerImpl) StopSession(ctx context.Context, blocking bool) error {
 	}
 
 	if err := r.worker.Submit(ctx, runnerReqStopSession{OnComplete: respCapture}); err != nil {
-		return models.SessionRunnerShutdownError{
-			Core:    err,
-			Message: "failed to submit stop request to session " + r.sessionName + " driver",
-		}
+		return models.NewSessionRunnerShutdownError(
+			"failed to submit stop request to session "+r.sessionName+" driver", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionRunnerShutdownError{
-				Message: "session " + r.sessionName + " stop request context ended",
-			}
+			return models.NewSessionRunnerShutdownError(
+				"session "+r.sessionName+" stop request context ended", nil, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionRunnerShutdownError{
-				Message: "session " + r.sessionName + " request-stop response channel closed",
-			}
+			return models.NewSessionRunnerShutdownError(
+				"session "+r.sessionName+" request-stop response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -601,11 +595,11 @@ func (r *runnerImpl) HandleStopSession(onComplete func(ctx context.Context, err 
 	// driver has been torn down. A ConsistencyError means the driver is already stopped; treat
 	// that as idempotent success and proceed to (re)assert the session state.
 	if err := r.driver.Stop(r.workingCtx); err != nil {
-		var consistencyErr models.ConsistencyError
+		var consistencyErr goutils.ConsistencyError
 		if !errors.As(err, &consistencyErr) {
-			exitErr := models.SessionRunnerShutdownError{
-				Core: err, Message: "failed to stop session " + r.sessionName + " driver",
-			}
+			exitErr := models.NewSessionRunnerShutdownError(
+				"failed to stop session "+r.sessionName+" driver", err, true,
+			)
 			log.WithError(exitErr).WithFields(logTags).Error("Session driver failed to stop")
 			onComplete(r.workingCtx, exitErr)
 			return exitErr
@@ -624,9 +618,9 @@ func (r *runnerImpl) HandleStopSession(onComplete func(ctx context.Context, err 
 			return err
 		},
 	); dbErr != nil {
-		exitErr := models.SessionRunnerShutdownError{
-			Core: dbErr, Message: "failed to transition session " + r.sessionName + " to IDLE",
-		}
+		exitErr := models.NewSessionRunnerShutdownError(
+			"failed to transition session "+r.sessionName+" to IDLE", dbErr, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session transition to IDLE failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -683,26 +677,25 @@ func (r *runnerImpl) SubmitCommands(
 	if err := r.worker.Submit(
 		ctx, runnerReqSubmitCommands{OnComplete: respCapture, Commands: commands},
 	); err != nil {
-		return models.SessionRunnerSubmitCommandError{
-			Core:    err,
-			Message: "failed to submit run-command request to session " + r.sessionName + " driver",
-		}
+		return models.NewSessionRunnerSubmitCommandError(
+			"failed to submit run-command request to session "+r.sessionName+" driver", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionRunnerSubmitCommandError{
-				Message: "session " + r.sessionName + " run-command context ended",
-			}
+			return models.NewSessionRunnerSubmitCommandError(
+				"session "+r.sessionName+" run-command context ended", nil, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionRunnerSubmitCommandError{
-				Message: "session " + r.sessionName + " run-command response channel closed",
-			}
+			return models.NewSessionRunnerSubmitCommandError(
+				"session "+r.sessionName+" run-command response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -727,18 +720,18 @@ func (r *runnerImpl) HandleSubmitCommands(
 	logTags := r.GetLogTagsForContext(r.workingCtx)
 
 	if r.session.RunnerMode != models.SessionRunnerModeTypeCommanded {
-		exitErr := models.SessionRunnerSubmitCommandError{
-			Message: "session " + r.sessionName + " not running in COMMAND mode",
-		}
+		exitErr := models.NewSessionRunnerSubmitCommandError(
+			"session "+r.sessionName+" not running in COMMAND mode", nil, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session can't process commands")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
 
 	if r.session.State != models.SessionStateReady {
-		exitErr := models.SessionRunnerSubmitCommandError{
-			Message: "session " + r.sessionName + " not ready to process commands yet",
-		}
+		exitErr := models.NewSessionRunnerSubmitCommandError(
+			"session "+r.sessionName+" not ready to process commands yet", nil, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session can't process commands")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -746,9 +739,9 @@ func (r *runnerImpl) HandleSubmitCommands(
 
 	serialized, err := models.BuildStdinInputFromCommands(commands)
 	if err != nil {
-		exitErr := models.SessionRunnerSubmitCommandError{
-			Core: err, Message: "failed to build command for session " + r.sessionName,
-		}
+		exitErr := models.NewSessionRunnerSubmitCommandError(
+			"failed to build command for session "+r.sessionName, err, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session commands serialization error")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -758,19 +751,18 @@ func (r *runnerImpl) HandleSubmitCommands(
 		r.workingCtx, BuildSessionInputBufferName(r.sessionID), r.session.OutputBufferCapacity,
 	)
 	if err != nil {
-		exitErr := models.SessionRunnerSubmitCommandError{
-			Core: err, Message: "failed to grab input buffer for session " + r.sessionName,
-		}
+		exitErr := models.NewSessionRunnerSubmitCommandError(
+			"failed to grab input buffer for session "+r.sessionName, err, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session commands serialization error")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
 
 	if _, err := inputBuf.Write(r.workingCtx, serialized); err != nil {
-		exitErr := models.SessionRunnerSubmitCommandError{
-			Core:    err,
-			Message: "failed to write commands into input buffer for session " + r.sessionName,
-		}
+		exitErr := models.NewSessionRunnerSubmitCommandError(
+			"failed to write commands into input buffer for session "+r.sessionName, err, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Session commands write failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -794,15 +786,15 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 	// Parse the message
 	msgAsStr, err := newMessage.StringPayload()
 	if err != nil {
-		return models.SessionRunnerIPCProcessError{
-			Core: err, Message: "session " + r.sessionName + " received non-string IPC message",
-		}
+		return models.NewSessionRunnerIPCProcessError(
+			"session "+r.sessionName+" received non-string IPC message", err, true,
+		)
 	}
 	parsed, err := models.ParseIPCMessage(r.validator, []byte(msgAsStr))
 	if err != nil {
-		return models.SessionRunnerIPCProcessError{
-			Core: err, Message: "session " + r.sessionName + " received unknown parsable IPC message",
-		}
+		return models.NewSessionRunnerIPCProcessError(
+			"session "+r.sessionName+" received unknown parsable IPC message", err, true,
+		)
 	}
 
 	// Helper function to build the standard response message
@@ -847,10 +839,9 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 		reply := buildResp(typedIPC.RequestID, models.IPCMsgTypeRespRunCommands, cmdErr)
 		// Send feedback to original requester
 		if err := returnResp(typedIPC.RequestID, reply); err != nil {
-			return models.SessionRunnerIPCProcessError{
-				Core:    err,
-				Message: "failed to send response for session " + r.sessionName + " command submission",
-			}
+			return models.NewSessionRunnerIPCProcessError(
+				"failed to send response for session "+r.sessionName+" command submission", err, true,
+			)
 		}
 
 	case models.IPCMessageReqStopSession:
@@ -860,18 +851,17 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 		reply := buildResp(typedIPC.RequestID, models.IPCMsgTypeRespStopSession, cmdErr)
 		// Send feedback to original requester
 		if err := returnResp(typedIPC.RequestID, reply); err != nil {
-			return models.SessionRunnerIPCProcessError{
-				Core:    err,
-				Message: "failed to send response for session " + r.sessionName + " stop request",
-			}
+			return models.NewSessionRunnerIPCProcessError(
+				"failed to send response for session "+r.sessionName+" stop request", err, true,
+			)
 		}
 
 	default:
-		return models.SessionRunnerIPCProcessError{Message: fmt.Sprintf(
+		return models.NewSessionRunnerIPCProcessError(fmt.Sprintf(
 			"session %s received unsupported IPC message %s",
 			r.sessionName,
 			reflect.TypeOf(parsed).String(),
-		)}
+		), nil, true)
 	}
 	return nil
 }
@@ -881,9 +871,9 @@ func (r *runnerImpl) processIPCRequests() {
 	// Prepare IPC REDIS queue
 	queue, err := r.redisClient.GetQueueHandle(r.workingCtx, BuildSessionIPCQueueName(r.sessionID))
 	if err != nil {
-		exitErr := models.SessionRunnerIPCProcessError{
-			Core: err, Message: "failed to get session " + r.sessionName + " IPC queue handle",
-		}
+		exitErr := models.NewSessionRunnerIPCProcessError(
+			"failed to get session "+r.sessionName+" IPC queue handle", err, true,
+		)
 		r.ipcProcessErrorNotify(exitErr)
 		return
 	}
@@ -903,9 +893,9 @@ func (r *runnerImpl) processIPCRequests() {
 
 		newMessage, err := queue.PopLeft(r.workingCtx, true, nil)
 		if err != nil {
-			exitErr := models.SessionRunnerIPCProcessError{
-				Core: err, Message: "IPC message read failure for session " + r.sessionName,
-			}
+			exitErr := models.NewSessionRunnerIPCProcessError(
+				"IPC message read failure for session "+r.sessionName, err, true,
+			)
 			log.WithError(exitErr).WithFields(logTags).Error("Session IPC read failure")
 			r.ipcProcessErrorNotify(exitErr)
 			return

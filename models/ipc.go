@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alwitt/goutils"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -51,10 +52,10 @@ Response - Session Manager
 func ParseIPCMessage(validator *validator.Validate, msg []byte) (interface{}, error) {
 	var asBaseMsg BaseIPCMessage
 	if err := json.Unmarshal(msg, &asBaseMsg); err != nil {
-		return nil, BadInputError{Core: err, Message: "failed to parse IPC message as base message"}
+		return nil, goutils.NewBadInputError("failed to parse IPC message as base message", err, true)
 	}
 	if err := validator.Struct(&asBaseMsg); err != nil {
-		return nil, ValidationError{Core: err, Message: "base IPC message invalid"}
+		return nil, goutils.NewValidationError("base IPC message invalid", err, true)
 	}
 	switch asBaseMsg.Type {
 	/****************************************************************************************
@@ -64,16 +65,26 @@ func ParseIPCMessage(validator *validator.Validate, msg []byte) (interface{}, er
 	case IPCMsgTypeReqRunCommands:
 		var parsed IPCMessageReqRunCommands
 		if err := json.Unmarshal(msg, &parsed); err != nil {
-			return nil, fmt.Errorf("IPC message '%s' parse failed [%w]", asBaseMsg.Type, err)
+			return nil, goutils.NewBadInputError(
+				fmt.Sprintf("IPC message '%s' parse failed", asBaseMsg.Type), err, true,
+			)
 		}
-		return parsed, validator.Struct(&parsed)
+		if err := validator.Struct(&parsed); err != nil {
+			return nil, goutils.NewValidationError("IPCMessageReqRunCommands message invalid", err, true)
+		}
+		return parsed, nil
 
 	case IPCMsgTypeReqStopSession:
 		var parsed IPCMessageReqStopSession
 		if err := json.Unmarshal(msg, &parsed); err != nil {
-			return nil, fmt.Errorf("IPC message '%s' parse failed [%w]", asBaseMsg.Type, err)
+			return nil, goutils.NewBadInputError(
+				fmt.Sprintf("IPC message '%s' parse failed", asBaseMsg.Type), err, true,
+			)
 		}
-		return parsed, validator.Struct(&parsed)
+		if err := validator.Struct(&parsed); err != nil {
+			return nil, goutils.NewValidationError("IPCMessageReqStopSession message invalid", err, true)
+		}
+		return parsed, nil
 
 	/****************************************************************************************
 	Response - Session Runner
@@ -84,12 +95,19 @@ func ParseIPCMessage(validator *validator.Validate, msg []byte) (interface{}, er
 	case IPCMsgTypeRespStopSession:
 		var parsed IPCMessageRespUniversal
 		if err := json.Unmarshal(msg, &parsed); err != nil {
-			return nil, fmt.Errorf("IPC message '%s' parse failed [%w]", asBaseMsg.Type, err)
+			return nil, goutils.NewBadInputError(
+				fmt.Sprintf("IPC message '%s' parse failed", asBaseMsg.Type), err, true,
+			)
 		}
-		return parsed, validator.Struct(&parsed)
+		if err := validator.Struct(&parsed); err != nil {
+			return nil, goutils.NewValidationError("IPCMessageRespUniversal message invalid", err, true)
+		}
+		return parsed, nil
 
 	default:
-		return nil, fmt.Errorf("unknown IPC message type %s", asBaseMsg.Type)
+		return nil, goutils.NewBadInputError(
+			fmt.Sprintf("unknown IPC message type %s", asBaseMsg.Type), nil, true,
+		)
 	}
 }
 

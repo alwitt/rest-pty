@@ -124,7 +124,7 @@ func TestSessionManagerHandlerLivenessAPIs(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			Ready().
-			Return(models.PersistenceError{Message: "dummy error"}).
+			Return(models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("GET", "/v1/ready", nil)
@@ -289,7 +289,7 @@ func TestSessionManagerHandlerDefineNewSession(t *testing.T) {
 			DefineNewSession(
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			).
-			Return(models.Session{}, models.PersistenceError{Message: "dummy error"}).
+			Return(models.Session{}, models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -392,7 +392,7 @@ func TestSessionManagerHandlerListSessions(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			ListSessions(mock.Anything, mock.Anything).
-			Return(nil, models.PersistenceError{Message: "dummy error"}).
+			Return(nil, models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("GET", "/v1/sessions", nil)
@@ -450,7 +450,7 @@ func TestSessionManagerHandlerGetSession(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "missing").
-			Return(models.Session{}, models.UnknownSessionError{Message: "unknown"}).
+			Return(models.Session{}, goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("GET", "/v1/sessions/missing", nil)
@@ -476,7 +476,7 @@ func TestSessionManagerHandlerGetSession(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			GetSessionByName(mock.Anything, "test-session").
-			Return(models.Session{}, models.PersistenceError{Message: "dummy error"}).
+			Return(models.Session{}, models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("GET", "/v1/sessions/test-session", nil)
@@ -572,7 +572,7 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionOutputBufCapacity(mock.Anything, "missing", int64(32768)).
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -598,7 +598,7 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionOutputBufCapacity(mock.Anything, "test-session", int64(32768)).
-			Return(models.ConsistencyError{Message: "not idle"}).
+			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -696,7 +696,7 @@ func TestSessionManagerHandlerUpdateSessionRunMode(t *testing.T) {
 			UpdateSessionRunMode(
 				mock.Anything, "test-session", models.SessionRunnerModeTypeByPassed,
 			).
-			Return(models.ConsistencyError{Message: "not idle"}).
+			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -795,7 +795,7 @@ func TestSessionManagerHandlerUpdateSessionCommand(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionCommand(mock.Anything, "missing", validCommand).
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -905,7 +905,7 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionDriver(mock.Anything, "test-session", mock.Anything).
-			Return(models.ValidationError{Message: "bad driver params"}).
+			Return(goutils.NewValidationError("bad driver params", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -931,7 +931,7 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionDriver(mock.Anything, "test-session", mock.Anything).
-			Return(models.ConsistencyError{Message: "not idle"}).
+			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -1025,7 +1025,7 @@ func TestSessionManagerHandlerUpdateSessionName(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionName(mock.Anything, "missing", "renamed-session").
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -1144,7 +1144,7 @@ func TestSessionManagerHandlerUpdateSessionDescription(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			UpdateSessionDescription(mock.Anything, "missing", mock.Anything).
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest(
@@ -1202,7 +1202,7 @@ func TestSessionManagerHandlerDeleteSession(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			DeleteSession(mock.Anything, "missing").
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("DELETE", "/v1/sessions/missing", nil)
@@ -1226,7 +1226,7 @@ func TestSessionManagerHandlerDeleteSession(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			DeleteSession(mock.Anything, "test-session").
-			Return(models.ConsistencyError{Message: "not idle"}).
+			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("DELETE", "/v1/sessions/test-session", nil)
@@ -1250,7 +1250,7 @@ func TestSessionManagerHandlerDeleteSession(t *testing.T) {
 		testMocks.database.
 			EXPECT().
 			DeleteSession(mock.Anything, "test-session").
-			Return(models.PersistenceError{Message: "dummy error"}).
+			Return(models.NewPersistenceError("dummy error", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("DELETE", "/v1/sessions/test-session", nil)
@@ -1346,7 +1346,7 @@ func TestSessionManagerHandlerStartSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StartSession(mock.Anything, "missing", false).
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/missing/start", nil)
@@ -1369,7 +1369,7 @@ func TestSessionManagerHandlerStartSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StartSession(mock.Anything, "test-session", false).
-			Return(models.ConsistencyError{Message: "not idle"}).
+			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/test-session/start", nil)
@@ -1392,7 +1392,7 @@ func TestSessionManagerHandlerStartSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StartSession(mock.Anything, "test-session", false).
-			Return(models.SessionManagerStartSessionError{Message: "boom"}).
+			Return(models.NewSessionManagerStartSessionError("boom", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/test-session/start", nil)
@@ -1488,7 +1488,7 @@ func TestSessionManagerHandlerStopSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StopSession(mock.Anything, "missing", false).
-			Return(models.UnknownSessionError{Message: "unknown"}).
+			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/missing/stop", nil)
@@ -1511,7 +1511,7 @@ func TestSessionManagerHandlerStopSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StopSession(mock.Anything, "test-session", false).
-			Return(models.ConsistencyError{Message: "not running"}).
+			Return(goutils.NewConsistencyError("not running", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/test-session/stop", nil)
@@ -1534,7 +1534,7 @@ func TestSessionManagerHandlerStopSession(t *testing.T) {
 		testMocks.manager.
 			EXPECT().
 			StopSession(mock.Anything, "test-session", false).
-			Return(models.SessionManagerStopSessionError{Message: "boom"}).
+			Return(models.NewSessionManagerStopSessionError("boom", nil, false)).
 			Once()
 
 		req, err := http.NewRequest("POST", "/v1/sessions/test-session/stop", nil)

@@ -78,9 +78,7 @@ func NewSessionIOHandler(
 	}
 
 	if err := models.RegisterWithValidator(handler.validate); err != nil {
-		return handler, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return handler, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
 	return handler, nil
@@ -176,7 +174,7 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 			return err
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -310,9 +308,9 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 		}
 
 	default:
-		err := models.RuntimeError{
-			Message: "unexpected IPC response payload type " + reflect.TypeOf(parsedResp).String(),
-		}
+		err := goutils.NewRuntimeError(
+			"unexpected IPC response payload type "+reflect.TypeOf(parsedResp).String(), nil, true,
+		)
 		msg := "Response from session '" + sessionName + "' runner is wrong"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		respCode = http.StatusInternalServerError
@@ -440,7 +438,7 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 			return err
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -609,7 +607,7 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 			return err
 		},
 	); dbErr != nil {
-		var unknownSession models.UnknownSessionError
+		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
@@ -112,7 +113,7 @@ func TestPtyDriver() error {
 	redisParams := getRedisParams()
 	redisClient, err := goutilsRedis.NewClient(ctx, redisParams)
 	if err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to prepare REDIS client"}
+		return goutils.NewRuntimeError("failed to prepare REDIS client", err, true)
 	}
 
 	bufferCapacity := int64(32 * 1024 * 1024)
@@ -138,11 +139,11 @@ func TestPtyDriver() error {
 		ctxCancel()
 	})
 	if err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to define session driver"}
+		return goutils.NewRuntimeError("failed to define session driver", err, true)
 	}
 
 	if err := uut.Start(ctx); err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to start session driver"}
+		return goutils.NewRuntimeError("failed to start session driver", err, true)
 	}
 	defer func() {
 		lclCtx, lclCtxCancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -157,13 +158,13 @@ func TestPtyDriver() error {
 		ctx, session.BuildSessionInputBufferName(shellSession.ID), bufferCapacity,
 	)
 	if err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to open INPUT buffer"}
+		return goutils.NewRuntimeError("failed to open INPUT buffer", err, true)
 	}
 	outputBuf, err := redisClient.GetRingBuffer(
 		ctx, session.BuildSessionOutputBufferName(shellSession.ID), bufferCapacity,
 	)
 	if err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to open OUTPUT buffer"}
+		return goutils.NewRuntimeError("failed to open OUTPUT buffer", err, true)
 	}
 
 	// Set stdin in raw mode.
@@ -185,7 +186,7 @@ func TestPtyDriver() error {
 		output := outputBuf.AsReadWriteCloser(ctx, 0, time.Millisecond*5)
 		_, err := io.Copy(os.Stdout, output)
 		if err != nil {
-			return models.RuntimeError{Core: err, Message: "OUTPUT piping failed"}
+			return goutils.NewRuntimeError("OUTPUT piping failed", err, true)
 		}
 	}
 	log.Warn("\n==================== [PTY Driver] Ended shell session =======================\n")

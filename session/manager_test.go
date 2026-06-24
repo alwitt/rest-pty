@@ -181,7 +181,7 @@ func TestSessionManagerConstruct(t *testing.T) {
 		uut, err := session.NewSessionManager(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var validationErr models.ValidationError
+		var validationErr goutils.ValidationError
 		assert.True(errors.As(err, &validationErr))
 	})
 
@@ -199,7 +199,7 @@ func TestSessionManagerConstruct(t *testing.T) {
 		uut, err := session.NewSessionManager(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -223,7 +223,7 @@ func TestSessionManagerConstruct(t *testing.T) {
 		uut, err := session.NewSessionManager(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -242,7 +242,7 @@ func TestSessionManagerConstruct(t *testing.T) {
 		uut, err := session.NewSessionManager(utCtx, params)
 		assert.Nil(uut)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -332,12 +332,12 @@ func TestSessionManagerStart(t *testing.T) {
 		m.passthroughTransaction()
 		m.database.EXPECT().
 			ListSessions(mock.Anything, mock.Anything).
-			Return(nil, models.PersistenceError{Message: "list boom"})
+			Return(nil, models.NewPersistenceError("list boom", nil, false))
 		// StartEventLoop is intentionally NOT expected: the handler must bail before it
 
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -355,11 +355,11 @@ func TestSessionManagerStart(t *testing.T) {
 			Return([]models.Session{buildSession("sess-a")}, nil)
 		m.database.EXPECT().
 			MarkSessionIdle(mock.Anything, "sess-a").
-			Return(models.PersistenceError{Message: "mark boom"})
+			Return(models.NewPersistenceError("mark boom", nil, false))
 
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -381,7 +381,7 @@ func TestSessionManagerStart(t *testing.T) {
 
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -405,7 +405,7 @@ func TestSessionManagerStart(t *testing.T) {
 
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 
 		// Second attempt: the worker loop now starts and the manager comes up
@@ -433,7 +433,7 @@ func TestSessionManagerStart(t *testing.T) {
 		// A second start finds the manager already RUNNING; no mocks are touched
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var consistencyErr models.ConsistencyError
+		var consistencyErr goutils.ConsistencyError
 		assert.True(errors.As(err, &consistencyErr))
 	})
 
@@ -450,7 +450,7 @@ func TestSessionManagerStart(t *testing.T) {
 
 		err := uut.Start(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 }
@@ -522,7 +522,7 @@ func TestSessionManagerStop(t *testing.T) {
 
 		err := uut.Stop(utCtx)
 		assert.NotNil(err)
-		var runtimeErr models.RuntimeError
+		var runtimeErr goutils.RuntimeError
 		assert.True(errors.As(err, &runtimeErr))
 	})
 
@@ -637,7 +637,7 @@ func TestSessionManagerHandleStartSession(t *testing.T) {
 
 		m.database.EXPECT().
 			GetSessionByName(mock.Anything, sessionName).
-			Return(models.Session{}, models.UnknownSessionError{Message: "no such session"})
+			Return(models.Session{}, goutils.NewNotFoundError("no such session", nil, false))
 
 		var gotErr error
 		called := false
@@ -723,7 +723,7 @@ func TestSessionManagerHandleStartSession(t *testing.T) {
 			Return(buildSession(models.SessionStateReady), nil)
 		m.database.EXPECT().
 			MarkSessionIdle(mock.Anything, sessionName).
-			Return(models.PersistenceError{Message: "mark boom"})
+			Return(models.NewPersistenceError("mark boom", nil, false))
 		// No runner is built: the handler must bail after the failed reset
 
 		var gotErr error
@@ -780,7 +780,7 @@ func TestSessionManagerHandleStartSession(t *testing.T) {
 			Return(buildSession(models.SessionStateIdle), nil)
 		m.runner.EXPECT().
 			Start(mock.Anything).
-			Return(models.RuntimeError{Message: "runner boom"})
+			Return(goutils.NewRuntimeError("runner boom", nil, false))
 		// cleanUpOnFail tears the runner down and forces the session back to IDLE
 		m.runner.EXPECT().Stop(mock.Anything).Return(nil)
 		m.database.EXPECT().MarkSessionIdle(mock.Anything, sessionName).Return(nil)
@@ -812,7 +812,7 @@ func TestSessionManagerHandleStartSession(t *testing.T) {
 		m.runner.EXPECT().Start(mock.Anything).Return(nil)
 		m.runner.EXPECT().
 			StartSession(mock.Anything, true).
-			Return(models.RuntimeError{Message: "driver boom"})
+			Return(goutils.NewRuntimeError("driver boom", nil, false))
 		// cleanUpOnFail tears the runner down and forces the session back to IDLE
 		m.runner.EXPECT().Stop(mock.Anything).Return(nil)
 		m.database.EXPECT().MarkSessionIdle(mock.Anything, sessionName).Return(nil)
@@ -896,7 +896,7 @@ func TestSessionManagerHandleStopSession(t *testing.T) {
 		// First stop: the driver fails to stop, so the handler bails before tearing down
 		m.runner.EXPECT().
 			StopSession(mock.Anything, true).
-			Return(models.RuntimeError{Message: "driver boom"}).
+			Return(goutils.NewRuntimeError("driver boom", nil, false)).
 			Once()
 
 		var gotErr error
@@ -930,7 +930,7 @@ func TestSessionManagerHandleStopSession(t *testing.T) {
 		m.runner.EXPECT().StopSession(mock.Anything, true).Return(nil).Once()
 		m.runner.EXPECT().
 			Stop(mock.Anything).
-			Return(models.RuntimeError{Message: "teardown boom"}).
+			Return(goutils.NewRuntimeError("teardown boom", nil, false)).
 			Once()
 
 		var gotErr error
@@ -1021,7 +1021,7 @@ func TestSessionManagerHandleStopAllSession(t *testing.T) {
 
 		m.runner.EXPECT().
 			Stop(mock.Anything).
-			Return(models.RuntimeError{Message: "teardown boom"}).
+			Return(goutils.NewRuntimeError("teardown boom", nil, false)).
 			Once()
 
 		var gotErr error
@@ -1056,7 +1056,7 @@ func TestSessionManagerHandleStopAllSession(t *testing.T) {
 		// first to run fails. Ordered expectations make the first Stop fail and the second succeed.
 		m.runner.EXPECT().
 			Stop(mock.Anything).
-			Return(models.RuntimeError{Message: "teardown boom"}).
+			Return(goutils.NewRuntimeError("teardown boom", nil, false)).
 			Once()
 		m.runner.EXPECT().Stop(mock.Anything).Return(nil).Once()
 
@@ -1143,7 +1143,7 @@ func TestSessionManagerStartSession(t *testing.T) {
 
 		uut := m.buildManager(utCtx, t, instanceName)
 
-		handlerErr := models.SessionManagerStartSessionError{Message: "handler boom"}
+		handlerErr := models.NewSessionManagerStartSessionError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {
@@ -1262,7 +1262,7 @@ func TestSessionManagerStopSession(t *testing.T) {
 
 		uut := m.buildManager(utCtx, t, instanceName)
 
-		handlerErr := models.SessionManagerStopSessionError{Message: "handler boom"}
+		handlerErr := models.NewSessionManagerStopSessionError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {
@@ -1380,7 +1380,7 @@ func TestSessionManagerStopAllSessions(t *testing.T) {
 
 		uut := m.buildManager(utCtx, t, instanceName)
 
-		handlerErr := models.SessionManagerStopAllSessionsError{Message: "handler boom"}
+		handlerErr := models.NewSessionManagerStopAllSessionsError("handler boom", nil, false)
 		m.worker.EXPECT().
 			Submit(mock.Anything, mock.Anything).
 			Run(func(_ context.Context, taskParam interface{}) {

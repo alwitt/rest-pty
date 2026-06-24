@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alwitt/goutils"
 	"github.com/go-playground/validator/v10"
 	"gorm.io/datatypes"
 )
@@ -145,11 +146,15 @@ func (s Session) ValidNextState(newState SessionStateENUMType) error {
 
 	availableNextStates, ok := statesWithTransitions[s.State]
 	if !ok {
-		return fmt.Errorf("session can't transition out of state '%s'", s.State)
+		return goutils.NewConsistencyError(
+			fmt.Sprintf("session can't transition out of state '%s'", s.State), nil, true,
+		)
 	}
 
 	if _, ok := availableNextStates[newState]; !ok {
-		return fmt.Errorf("session can't transition from '%s' to '%s'", s.State, newState)
+		return goutils.NewConsistencyError(
+			fmt.Sprintf("session can't transition from '%s' to '%s'", s.State, newState), nil, true,
+		)
 	}
 
 	return nil

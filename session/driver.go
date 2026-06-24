@@ -70,8 +70,9 @@ func prepareCoreDriver(
 	case models.SessionDriverTypePTY:
 		return newPTYCoreDriver(workingCtx, instanceID, session)
 	default:
-		return nil,
-			models.ConsistencyError{Message: "Unknown session driver type " + string(session.DriverType)}
+		return nil, goutils.NewConsistencyError(
+			"Unknown session driver type "+string(session.DriverType), nil, true,
+		)
 	}
 }
 
@@ -177,9 +178,9 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 	}()
 
 	if r.core != nil {
-		return models.ConsistencyError{
-			Message: "session " + r.session.Name + " driver already running",
-		}
+		return goutils.NewConsistencyError(
+			"session "+r.session.Name+" driver already running", nil, true,
+		)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -192,18 +193,18 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 
 	if err := r.redisClient.DeleteRingBuffer(r.workingCtx, r.inputBufferName); err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "failed to delete existing session " + r.session.Name + " input buffer",
-		}
+		return goutils.NewRuntimeError(
+			"failed to delete existing session "+r.session.Name+" input buffer", err, true,
+		)
 	}
 	inputBuf, err := r.redisClient.GetRingBuffer(
 		r.workingCtx, r.inputBufferName, r.session.OutputBufferCapacity,
 	)
 	if err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "failed to define session " + r.session.Name + " input buffer",
-		}
+		return goutils.NewRuntimeError(
+			"failed to define session "+r.session.Name+" input buffer", err, true,
+		)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -214,9 +215,9 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 	)
 	if err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "failed to define session " + r.session.Name + " output buffer",
-		}
+		return goutils.NewRuntimeError(
+			"failed to define session "+r.session.Name+" output buffer", err, true,
+		)
 	}
 
 	cmdDisplayStr := ""
@@ -238,9 +239,9 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		),
 	); err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "failed to write session " + r.session.Name + " preamble",
-		}
+		return goutils.NewRuntimeError(
+			"failed to write session "+r.session.Name+" preamble", err, true,
+		)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -249,15 +250,15 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 	core, err := prepareCoreDriver(r.workingCtx, r.instanceID, r.session)
 	if err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "core driver construction for session " + r.session.Name + " failed",
-		}
+		return goutils.NewRuntimeError(
+			"core driver construction for session "+r.session.Name+" failed", err, true,
+		)
 	}
 	if err := core.Setup(); err != nil {
 		r.workingCtxCancel()
-		return models.RuntimeError{
-			Core: err, Message: "core driver setup for session " + r.session.Name + " failed",
-		}
+		return goutils.NewRuntimeError(
+			"core driver setup for session "+r.session.Name+" failed", err, true,
+		)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -366,26 +367,26 @@ func (r *driverImpl) Stop(ctx context.Context) error {
 	}()
 
 	if r.core == nil {
-		return models.ConsistencyError{
-			Message: "session " + r.session.Name + " driver is not running",
-		}
+		return goutils.NewConsistencyError(
+			"session "+r.session.Name+" driver is not running", nil, true,
+		)
 	}
 
 	r.workingCtxCancel()
 
 	if err := r.core.TearDown(); err != nil {
-		return models.RuntimeError{
-			Core: err, Message: "session " + r.session.Name + " driver tear down failed",
-		}
+		return goutils.NewRuntimeError(
+			"session "+r.session.Name+" driver tear down failed", err, true,
+		)
 	}
 
 	log.WithFields(logTags).Info("Core Driver teared down")
 
 	// Wait for all daemon threads to end
 	if err := goutils.TimeBoundedWaitGroupWait(ctx, &r.wg, time.Second*5); err != nil {
-		return models.RuntimeError{
-			Core: err, Message: "session " + r.session.Name + " support daemons did not stop in time",
-		}
+		return goutils.NewRuntimeError(
+			"session "+r.session.Name+" support daemons did not stop in time", err, true,
+		)
 	}
 
 	log.WithFields(logTags).Info("All driver support daemon threads stopped")

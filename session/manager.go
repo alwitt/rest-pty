@@ -202,21 +202,19 @@ NewSessionManager define a new manager to oversee session runners
 func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams) (Manager, error) {
 	validate := validator.New()
 	if err := models.RegisterWithValidator(validate); err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return nil, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
 	// Validate initialization parameters
 	if err := validate.Struct(&params); err != nil {
-		return nil, models.ValidationError{Core: err, Message: "session manager init param invalid"}
+		return nil, goutils.NewValidationError("session manager init param invalid", err, true)
 	}
 
 	persistence, err := params.PersistenceFactory()
 	if err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to prepare scoped persistence for manager",
-		}
+		return nil, goutils.NewRuntimeError(
+			"failed to prepare scoped persistence for manager", err, true,
+		)
 	}
 
 	logTags := log.Fields{
@@ -261,7 +259,7 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 		nil,
 	)
 	if err != nil {
-		return nil, models.RuntimeError{Core: err, Message: "failed to define worker task engine"}
+		return nil, goutils.NewRuntimeError("failed to define worker task engine", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -278,9 +276,9 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(managerReqStartSession{}),
-		)}
+		), err, true)
 	}
 
 	// Pending request to stop the session
@@ -294,9 +292,9 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(managerReqStopSession{}),
-		)}
+		), err, true)
 	}
 
 	// Pending request to stop all sessions
@@ -310,9 +308,9 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
 		},
 	); err != nil {
-		return nil, models.RuntimeError{Core: err, Message: fmt.Sprintf(
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(managerReqStopAllSessions{}),
-		)}
+		), err, true)
 	}
 
 	return instance, nil
@@ -324,9 +322,11 @@ func (r *managerImpl) Start(ctx context.Context) error {
 	// has been STOPPED (terminal); distinguish the two for the caller.
 	if !r.lifecycle.CompareAndSwap(managerStateNew, managerStateRunning) {
 		if r.lifecycle.Load() == managerStateStopped {
-			return models.RuntimeError{Message: "session manager already stopped and can't start again"}
+			return goutils.NewRuntimeError(
+				"session manager already stopped and can't start again", nil, true,
+			)
 		}
-		return models.ConsistencyError{Message: "session manager already running"}
+		return goutils.NewConsistencyError("session manager already running", nil, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -347,28 +347,28 @@ func (r *managerImpl) Start(ctx context.Context) error {
 				TargetStates: []models.SessionStateENUMType{models.SessionStateReady},
 			})
 			if err != nil {
-				return models.RuntimeError{Core: err, Message: "unable to list READY sessions"}
+				return goutils.NewRuntimeError("unable to list READY sessions", err, true)
 			}
 
 			for _, oneSession := range readySessions {
 				if err := dbClient.MarkSessionIdle(dbCtx, oneSession.Name); err != nil {
-					return models.RuntimeError{
-						Core: err, Message: "unable to mark session " + oneSession.Name + " IDLE",
-					}
+					return goutils.NewRuntimeError(
+						"unable to mark session "+oneSession.Name+" IDLE", err, true,
+					)
 				}
 			}
 
 			return nil
 		},
 	); dbErr != nil {
-		return dbErr
+		return goutils.NewRuntimeError("failed to transition all running session to idle", dbErr, true)
 	}
 
 	// ------------------------------------------------------------------------------------
 	// Start the task processor
 
 	if err := r.worker.StartEventLoop(&r.wg); err != nil {
-		return models.RuntimeError{Core: err, Message: "failed to start manager support worker"}
+		return goutils.NewRuntimeError("failed to start manager support worker", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -406,11 +406,11 @@ func (r *managerImpl) Stop(ctx context.Context) error {
 	r.workingCtxCancel()
 
 	if err := r.worker.StopEventLoop(); err != nil {
-		stopErr = models.RuntimeError{Core: err, Message: "failed to stop manager worker tasks"}
+		stopErr = goutils.NewRuntimeError("failed to stop manager worker tasks", err, true)
 	}
 
 	if err := goutils.TimeBoundedWaitGroupWait(ctx, &r.wg, time.Second*10); err != nil {
-		stopErr = models.RuntimeError{Core: err, Message: "manager support did not stop in time"}
+		stopErr = goutils.NewRuntimeError("manager support did not stop in time", err, true)
 	}
 
 	return stopErr
@@ -452,9 +452,9 @@ func (r *managerImpl) StartSession(ctx context.Context, sessionName string, bloc
 		if err := r.worker.Submit(ctx, managerReqStartSession{
 			OnComplete: r.logOnlyCompletion("start-session"), SessionName: sessionName,
 		}); err != nil {
-			return models.SessionManagerStartSessionError{
-				Core: err, Message: "failed to submit start session " + sessionName + " request",
-			}
+			return models.NewSessionManagerStartSessionError(
+				"failed to submit start session "+sessionName+" request", err, true,
+			)
 		}
 		return nil
 	}
@@ -471,25 +471,25 @@ func (r *managerImpl) StartSession(ctx context.Context, sessionName string, bloc
 	if err := r.worker.Submit(ctx, managerReqStartSession{
 		OnComplete: respCapture, SessionName: sessionName,
 	}); err != nil {
-		return models.SessionManagerStartSessionError{
-			Core: err, Message: "failed to submit start session " + sessionName + " request",
-		}
+		return models.NewSessionManagerStartSessionError(
+			"failed to submit start session "+sessionName+" request", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionManagerStartSessionError{
-				Core: err, Message: "session " + sessionName + " start request context ended",
-			}
+			return models.NewSessionManagerStartSessionError(
+				"session "+sessionName+" start request context ended", err, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionManagerStartSessionError{
-				Message: "session " + sessionName + " request-start response channel closed",
-			}
+			return models.NewSessionManagerStartSessionError(
+				"session "+sessionName+" request-start response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -515,9 +515,9 @@ func (r *managerImpl) HandleStartSession(
 
 	// Is the manager still accepting start requests
 	if !r.allowNewStarts.Load() {
-		exitErr := models.SessionManagerStartSessionError{
-			Message: "manager not accepting session start requests",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"manager not accepting session start requests", nil, true,
+		)
 		log.WithError(exitErr).WithFields(logTags).Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -532,9 +532,9 @@ func (r *managerImpl) HandleStartSession(
 			return err
 		},
 	); dbErr != nil {
-		exitErr := models.SessionManagerStartSessionError{
-			Core: dbErr, Message: "failed to verify session " + sessionName + " is valid",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"failed to verify session "+sessionName+" is valid", dbErr, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -545,9 +545,9 @@ func (r *managerImpl) HandleStartSession(
 
 	// There can't be an existing runner
 	if _, foundExistingRunner := r.activeRunners[sessionEntry.Name]; foundExistingRunner {
-		exitErr := models.SessionManagerStartSessionError{
-			Message: "session " + sessionEntry.Name + " runner already present",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"session "+sessionEntry.Name+" runner already present", nil, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -564,9 +564,9 @@ func (r *managerImpl) HandleStartSession(
 			},
 		)
 		if dbErr != nil {
-			exitErr := models.SessionManagerStartSessionError{
-				Core: dbErr, Message: "failed to move session " + sessionName + " back to IDLE",
-			}
+			exitErr := models.NewSessionManagerStartSessionError(
+				"failed to move session "+sessionName+" back to IDLE", dbErr, true,
+			)
 			return exitErr
 		}
 		return nil
@@ -601,9 +601,9 @@ func (r *managerImpl) HandleStartSession(
 		},
 	})
 	if err != nil {
-		exitErr := models.SessionManagerStartSessionError{
-			Core: err, Message: "failed to define session " + sessionEntry.Name + " runner",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"failed to define session "+sessionEntry.Name+" runner", err, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -615,9 +615,9 @@ func (r *managerImpl) HandleStartSession(
 	cleanUpOnFail := func() {
 		err := newRunner.Stop(r.workingCtx)
 		if err != nil {
-			exitErr := models.SessionManagerStartSessionError{
-				Core: err, Message: "failed to stop session " + sessionName + " runner",
-			}
+			exitErr := models.NewSessionManagerStartSessionError(
+				"failed to stop session "+sessionName+" runner", err, true,
+			)
 			log.
 				WithError(exitErr).
 				WithFields(logTags).
@@ -637,9 +637,9 @@ func (r *managerImpl) HandleStartSession(
 	if err := newRunner.Start(r.workingCtx); err != nil {
 		// Shut the runner down just in case it partially started.
 		defer cleanUpOnFail()
-		exitErr := models.SessionManagerStartSessionError{
-			Core: err, Message: "failed to start session " + sessionEntry.Name + " runner",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"failed to start session "+sessionEntry.Name+" runner", err, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -652,9 +652,9 @@ func (r *managerImpl) HandleStartSession(
 	if err := newRunner.StartSession(r.workingCtx, true); err != nil {
 		// Shut the runner down just in case it partially started.
 		defer cleanUpOnFail()
-		exitErr := models.SessionManagerStartSessionError{
-			Core: err, Message: "failed to start session " + sessionEntry.Name + " driver",
-		}
+		exitErr := models.NewSessionManagerStartSessionError(
+			"failed to start session "+sessionEntry.Name+" driver", err, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -694,9 +694,9 @@ func (r *managerImpl) StopSession(ctx context.Context, sessionName string, block
 		if err := r.worker.Submit(ctx, managerReqStopSession{
 			OnComplete: r.logOnlyCompletion("stop-session"), SessionName: sessionName,
 		}); err != nil {
-			return models.SessionManagerStopSessionError{
-				Core: err, Message: "failed to submit stop session " + sessionName + " request",
-			}
+			return models.NewSessionManagerStopSessionError(
+				"failed to submit stop session "+sessionName+" request", err, true,
+			)
 		}
 		return nil
 	}
@@ -713,25 +713,25 @@ func (r *managerImpl) StopSession(ctx context.Context, sessionName string, block
 	if err := r.worker.Submit(ctx, managerReqStopSession{
 		OnComplete: respCapture, SessionName: sessionName,
 	}); err != nil {
-		return models.SessionManagerStopSessionError{
-			Core: err, Message: "failed to submit stop session " + sessionName + " request",
-		}
+		return models.NewSessionManagerStopSessionError(
+			"failed to submit stop session "+sessionName+" request", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionManagerStopSessionError{
-				Core: err, Message: "session " + sessionName + " stop request context ended",
-			}
+			return models.NewSessionManagerStopSessionError(
+				"session "+sessionName+" stop request context ended", err, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionManagerStopSessionError{
-				Message: "session " + sessionName + " request-stop response channel closed",
-			}
+			return models.NewSessionManagerStopSessionError(
+				"session "+sessionName+" request-stop response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -766,9 +766,9 @@ func (r *managerImpl) HandleStopSession(
 
 	// Bring the session driver back to IDLE
 	if err := runner.StopSession(r.workingCtx, true); err != nil {
-		exitErr := models.SessionManagerStopSessionError{
-			Core: err, Message: "failed to stop session " + sessionName + " driver",
-		}
+		exitErr := models.NewSessionManagerStopSessionError(
+			"failed to stop session "+sessionName+" driver", err, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -787,9 +787,9 @@ func (r *managerImpl) HandleStopSession(
 	// would double-attach to the same session resources. This leaves the session wedged until
 	// an operator inspects the logs and intervenes — a deliberate tradeoff over silent leakage.
 	if err := runner.Stop(r.workingCtx); err != nil {
-		exitErr := models.SessionManagerStopSessionError{
-			Core: err, Message: "failed to unload session " + sessionName + " runner",
-		}
+		exitErr := models.NewSessionManagerStopSessionError(
+			"failed to unload session "+sessionName+" runner", err, true,
+		)
 		log.
 			WithError(exitErr).
 			WithFields(logTags).
@@ -874,9 +874,9 @@ func (r *managerImpl) StopAllSessions(ctx context.Context, blocking bool) error 
 		if err := r.worker.Submit(ctx, managerReqStopAllSessions{
 			OnComplete: r.logOnlyCompletion("stop-all-sessions"),
 		}); err != nil {
-			return models.SessionManagerStopAllSessionsError{
-				Core: err, Message: "failed to submit stop all sessions request",
-			}
+			return models.NewSessionManagerStopAllSessionsError(
+				"failed to submit stop all sessions request", err, true,
+			)
 		}
 		return nil
 	}
@@ -893,25 +893,25 @@ func (r *managerImpl) StopAllSessions(ctx context.Context, blocking bool) error 
 	if err := r.worker.Submit(ctx, managerReqStopAllSessions{
 		OnComplete: respCapture,
 	}); err != nil {
-		return models.SessionManagerStopAllSessionsError{
-			Core: err, Message: "failed to submit stop all sessions request",
-		}
+		return models.NewSessionManagerStopAllSessionsError(
+			"failed to submit stop all sessions request", err, true,
+		)
 	}
 
 	// Wait for response
 	select {
 	case <-ctx.Done():
 		if err := ctx.Err(); err != nil {
-			return models.SessionManagerStopAllSessionsError{
-				Core: err, Message: "stop all sessions request context ended",
-			}
+			return models.NewSessionManagerStopAllSessionsError(
+				"stop all sessions request context ended", err, true,
+			)
 		}
 
 	case resp, ok := <-respChan:
 		if !ok {
-			return models.SessionManagerStopAllSessionsError{
-				Message: "stop all sessions response channel closed",
-			}
+			return models.NewSessionManagerStopAllSessionsError(
+				"stop all sessions response channel closed", nil, true,
+			)
 		}
 		if resp.err != nil {
 			return resp.err
@@ -950,9 +950,9 @@ func (r *managerImpl) HandleStopAllSessions(onComplete func(ctx context.Context,
 				WithFields(logTags).
 				Errorf("Failed to stop session %s runner during bulk shutdown", sessionName)
 			if stopErr == nil {
-				stopErr = models.SessionManagerStopAllSessionsError{
-					Core: err, Message: "failed to stop session " + sessionName + " runner",
-				}
+				stopErr = models.NewSessionManagerStopAllSessionsError(
+					"failed to stop session "+sessionName+" runner", err, true,
+				)
 			}
 		}
 		delete(r.activeRunners, sessionName)

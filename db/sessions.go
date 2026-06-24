@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/oklog/ulid/v2"
 	"gorm.io/datatypes"
@@ -23,7 +24,7 @@ DefineNewSession define a new session
 	@param driverParams interface{} - session driver parameters, allowed types are:
 	    * SessionDriverPTYParams
 	@returns new session entry
-	@returns `models.ValidationError` bad data
+	@returns `goutils.ValidationError` bad data
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) DefineNewSession(
@@ -39,14 +40,14 @@ func (d *databaseImpl) DefineNewSession(
 	case models.SessionDriverPTYParams:
 		driverType = models.SessionDriverTypePTY
 	default:
-		return models.Session{}, models.ValidationError{
-			Message: "unsupported session driver metadata type " + reflect.TypeOf(driverParams).String(),
-		}
+		return models.Session{}, goutils.NewValidationError(
+			"unsupported session driver metadata type "+reflect.TypeOf(driverParams).String(), nil, true,
+		)
 	}
 
 	if err := d.validator.Struct(driverParams); err != nil {
 		return models.Session{},
-			models.ValidationError{Core: err, Message: "new session driver parameters are invalid"}
+			goutils.NewValidationError("new session driver parameters are invalid", err, true)
 	}
 
 	driverMetadataStr, _ := json.Marshal(&driverParams)
@@ -67,12 +68,12 @@ func (d *databaseImpl) DefineNewSession(
 
 	if err := d.validator.Struct(&newEntry); err != nil {
 		return models.Session{},
-			models.ValidationError{Core: err, Message: "new session entry attributes are invalid"}
+			goutils.NewValidationError("new session entry attributes are invalid", err, true)
 	}
 
 	if tmp := d.db.Create(&newEntry); tmp.Error != nil {
 		return models.Session{},
-			models.PersistenceError{Core: tmp.Error, Message: "failed to define new session entry"}
+			models.NewPersistenceError("failed to define new session entry", tmp.Error, true)
 	}
 
 	return newEntry.Session, nil
@@ -86,10 +87,10 @@ func (d *databaseImpl) getSessionEntryByName(name string) (sessionEntry, error) 
 	if tmp.Error != nil {
 		if errors.Is(tmp.Error, gorm.ErrRecordNotFound) {
 			return sessionEntry{},
-				models.UnknownSessionError{Core: tmp.Error, Message: "session '" + name + "' is unknown"}
+				goutils.NewNotFoundError("session '"+name+"' is unknown", tmp.Error, true)
 		}
 		return sessionEntry{},
-			models.PersistenceError{Core: tmp.Error, Message: "failed to fetch session '" + name + "'"}
+			models.NewPersistenceError("failed to fetch session '"+name+"'", tmp.Error, true)
 	}
 
 	return entry, nil
@@ -122,17 +123,16 @@ func (d *databaseImpl) updateSessionState(
 	}
 
 	if err := session.ValidNextState(newState); err != nil {
-		return models.ConsistencyError{
-			Core: err, Message: "can't change session " + session.Name + " state",
-		}
+		return goutils.NewConsistencyError(
+			"can't change session "+session.Name+" state", err, true,
+		)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", session.ID).Update("state", newState)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + session.Name + "'[" + session.ID + "] new state",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+session.Name+"'["+session.ID+"] new state", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -144,7 +144,7 @@ MarkSessionIdle mark a session is IDLE
 	@param ctx context.Context - execution context
 	@param name string - session name
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `goutils.ConsistencyError` state transition is not acceptable
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) MarkSessionIdle(_ context.Context, name string) error {
@@ -157,7 +157,7 @@ MarkSessionReady mark a session is Ready
 	@param ctx context.Context - execution context
 	@param name string - session name
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` state transition is not acceptable
+	@returns `goutils.ConsistencyError` state transition is not acceptable
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) MarkSessionReady(_ context.Context, name string) error {
@@ -173,7 +173,7 @@ This can only be performed on IDLE sessions.
 	@param name string - session name
 	@param newCap int64 - new output buffer capacity
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` session in wrong state
+	@returns `goutils.ConsistencyError` session in wrong state
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) UpdateSessionOutputBufCapacity(
@@ -185,24 +185,21 @@ func (d *databaseImpl) UpdateSessionOutputBufCapacity(
 	}
 
 	if entry.State != models.SessionStateIdle {
-		return models.ConsistencyError{
-			Message: "can't change session '" + name + "' output buffer capacity outside of IDLE state",
-		}
+		return goutils.NewConsistencyError(
+			"can't change session '"+name+"' output buffer capacity outside of IDLE state", nil, true,
+		)
 	}
 
 	entry.OutputBufferCapacity = newCap
 	if err := d.validator.Struct(&entry); err != nil {
-		return models.ValidationError{
-			Core: err, Message: "new session " + name + " capacity is invalid",
-		}
+		return goutils.NewValidationError("new session "+name+" capacity is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("io_buf_cap", newCap)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new IO capacity",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new IO capacity", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -217,7 +214,7 @@ This can only be performed on IDLE sessions.
 	@param name string - session name
 	@param newMode models.SessionRunnerModeTypeENUMType - new runner mode
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` session in wrong state
+	@returns `goutils.ConsistencyError` session in wrong state
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) UpdateSessionRunMode(
@@ -229,24 +226,21 @@ func (d *databaseImpl) UpdateSessionRunMode(
 	}
 
 	if entry.State != models.SessionStateIdle {
-		return models.ConsistencyError{
-			Message: "can't change session '" + name + "' runner mode outside of IDLE state",
-		}
+		return goutils.NewConsistencyError(
+			"can't change session '"+name+"' runner mode outside of IDLE state", nil, true,
+		)
 	}
 
 	entry.RunnerMode = newMode
 	if err := d.validator.Struct(&entry); err != nil {
-		return models.ValidationError{
-			Core: err, Message: "new session " + name + " runner mode is invalid",
-		}
+		return goutils.NewValidationError("new session "+name+" runner mode is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("runner_mode", newMode)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new runner mode",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new runner mode", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -261,7 +255,7 @@ This can only be performed on IDLE sessions.
 	@param name string - session name
 	@param newCommand models.SessionCommand - new session command
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` session in wrong state
+	@returns `goutils.ConsistencyError` session in wrong state
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) UpdateSessionCommand(
@@ -273,24 +267,21 @@ func (d *databaseImpl) UpdateSessionCommand(
 	}
 
 	if entry.State != models.SessionStateIdle {
-		return models.ConsistencyError{
-			Message: "can't change session '" + name + "' command outside of IDLE state",
-		}
+		return goutils.NewConsistencyError(
+			"can't change session '"+name+"' command outside of IDLE state", nil, true,
+		)
 	}
 
 	entry.Command = newCommand
 	if err := d.validator.Struct(&entry); err != nil {
-		return models.ValidationError{
-			Core: err, Message: " new session " + name + " command is invalid",
-		}
+		return goutils.NewValidationError(" new session "+name+" command is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("command", newCommand)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new command",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new command", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -305,8 +296,8 @@ This can only be performed on IDLE sessions.
 	@param name string - session name
 	@param driverParams interface{} - new session driver parameters
 	@returns `models.UnknownSessionError` if session is unknown
-	@returns `models.ConsistencyError` session in wrong state
-	@returns `models.ValidationError` new driver parameters are not valid
+	@returns `goutils.ConsistencyError` session in wrong state
+	@returns `goutils.ValidationError` new driver parameters are not valid
 	@returns `models.PersistenceError` persistence layer failure
 */
 func (d *databaseImpl) UpdateSessionDriver(
@@ -318,9 +309,9 @@ func (d *databaseImpl) UpdateSessionDriver(
 	}
 
 	if entry.State != models.SessionStateIdle {
-		return models.ConsistencyError{
-			Message: "can't change session '" + name + "' driver outside of IDLE state",
-		}
+		return goutils.NewConsistencyError(
+			"can't change session '"+name+"' driver outside of IDLE state", nil, true,
+		)
 	}
 
 	var driverType models.SessionDriverTypeENUMType
@@ -328,13 +319,13 @@ func (d *databaseImpl) UpdateSessionDriver(
 	case models.SessionDriverPTYParams:
 		driverType = models.SessionDriverTypePTY
 	default:
-		return models.ValidationError{
-			Message: "unsupported session driver metadata type " + reflect.TypeOf(driverParams).String(),
-		}
+		return goutils.NewValidationError(
+			"unsupported session driver metadata type "+reflect.TypeOf(driverParams).String(), nil, true,
+		)
 	}
 
 	if err := d.validator.Struct(driverParams); err != nil {
-		return models.ValidationError{Core: err, Message: "new session driver parameters are invalid"}
+		return goutils.NewValidationError("new session driver parameters are invalid", err, true)
 	}
 
 	driverMetadataStr, _ := json.Marshal(&driverParams)
@@ -342,9 +333,7 @@ func (d *databaseImpl) UpdateSessionDriver(
 	entry.DriverType = driverType
 	entry.DriverMetadata = datatypes.JSON(driverMetadataStr)
 	if err := d.validator.Struct(&entry); err != nil {
-		return models.ValidationError{
-			Core: err, Message: " new session " + name + " driver params is invalid",
-		}
+		return goutils.NewValidationError(" new session "+name+" driver params is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).
@@ -352,10 +341,9 @@ func (d *databaseImpl) UpdateSessionDriver(
 		Update("driver", driverType).
 		Update("driver_metadata", datatypes.JSON(driverMetadataStr))
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new driver params",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new driver params", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -378,15 +366,14 @@ func (d *databaseImpl) UpdateSessionName(_ context.Context, name string, newName
 
 	entry.Name = newName
 	if err := d.validator.Struct(&entry); err != nil {
-		return models.ValidationError{Core: err, Message: "new session name is invalid"}
+		return goutils.NewValidationError("new session name is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("name", newName)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new name",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new name", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -414,10 +401,9 @@ func (d *databaseImpl) UpdateSessionDescription(
 		Where("id = ?", entry.ID).
 		Update("description", newDescription)
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to record session '" + entry.Name + "'[" + entry.ID + "] new description",
-		}
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new description", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -438,17 +424,16 @@ func (d *databaseImpl) DeleteSession(_ context.Context, name string) error {
 	}
 
 	if entry.State != models.SessionStateIdle {
-		return models.ConsistencyError{
-			Message: "can't delete session '" + name + "' outside of IDLE state",
-		}
+		return goutils.NewConsistencyError(
+			"can't delete session '"+name+"' outside of IDLE state", nil, true,
+		)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Delete(&sessionEntry{})
 	if tmp.Error != nil {
-		return models.PersistenceError{
-			Core:    tmp.Error,
-			Message: "failed to delete session '" + entry.Name + "'[" + entry.ID + "]",
-		}
+		return models.NewPersistenceError(
+			"failed to delete session '"+entry.Name+"'["+entry.ID+"]", tmp.Error, true,
+		)
 	}
 
 	return nil
@@ -466,7 +451,7 @@ func (d *databaseImpl) ListSessions(
 	_ context.Context, filters SessionQueryFilter,
 ) ([]models.Session, error) {
 	if err := d.validator.Struct(&filters); err != nil {
-		return nil, models.ValidationError{Core: err, Message: "session query filter is invalid"}
+		return nil, goutils.NewValidationError("session query filter is invalid", err, true)
 	}
 
 	query := d.db.Model(&sessionEntry{})
@@ -499,7 +484,7 @@ func (d *databaseImpl) ListSessions(
 
 	var entries []sessionEntry
 	if tmp := query.Find(&entries); tmp.Error != nil {
-		return nil, models.PersistenceError{Core: tmp.Error, Message: "failed to list sessions"}
+		return nil, models.NewPersistenceError("failed to list sessions", tmp.Error, true)
 	}
 
 	results := make([]models.Session, 0, len(entries))

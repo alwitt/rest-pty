@@ -221,9 +221,7 @@ func newDatabase(
 	}
 
 	if err := models.RegisterWithValidator(instance.validator); err != nil {
-		return nil, models.RuntimeError{
-			Core: err, Message: "failed to install custom validation macros",
-		}
+		return nil, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
 	return instance, nil

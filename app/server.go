@@ -68,7 +68,7 @@ Start the server and its components
 func (s *serverImpl) Start(ctx context.Context, serverErrors chan error) error {
 	// Start the manager
 	if err := s.manager.Start(ctx); err != nil {
-		return models.BootStrapError{Core: err, Message: "Failed to start session manager"}
+		return models.NewBootStrapError("Failed to start session manager", err, true)
 	}
 
 	// Start API server
@@ -78,7 +78,7 @@ func (s *serverImpl) Start(ctx context.Context, serverErrors chan error) error {
 		logTags := s.GetLogTagsForContext(s.parentCtx)
 		if err := s.mainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).WithFields(logTags).Error("REST API Server failure")
-			serverErrors <- err
+			serverErrors <- goutils.NewRuntimeError("REST API Server failure", err, true)
 		}
 	}()
 
@@ -89,7 +89,7 @@ func (s *serverImpl) Start(ctx context.Context, serverErrors chan error) error {
 		logTags := s.GetLogTagsForContext(s.parentCtx)
 		if err := s.metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).WithFields(logTags).Error("Metrics API Server failure")
-			serverErrors <- err
+			serverErrors <- goutils.NewRuntimeError("Metrics API Server failure", err, true)
 		}
 	}()
 
@@ -107,7 +107,7 @@ func (s *serverImpl) Stop(ctx context.Context) error {
 
 	// Stop the session manager
 	if err := s.manager.Stop(lclCtx); err != nil {
-		return models.ShutdownError{Core: err, Message: "Failed to stop session manager"}
+		return models.NewShutdownError("Failed to stop session manager", err, true)
 	}
 
 	// Gracefully stop the HTTP servers so their ListenAndServe goroutines return. Attempt
@@ -115,15 +115,15 @@ func (s *serverImpl) Stop(ctx context.Context) error {
 	mainErr := s.mainServer.Shutdown(lclCtx)
 	metricsErr := s.metricsServer.Shutdown(lclCtx)
 	if mainErr != nil {
-		return models.ShutdownError{Core: mainErr, Message: "Failed to stop REST API server"}
+		return models.NewShutdownError("Failed to stop REST API server", mainErr, true)
 	}
 	if metricsErr != nil {
-		return models.ShutdownError{Core: metricsErr, Message: "Failed to stop metrics server"}
+		return models.NewShutdownError("Failed to stop metrics server", metricsErr, true)
 	}
 
 	// Wait for all threads to stop
 	if err := goutils.TimeBoundedWaitGroupWait(lclCtx, &s.wg, time.Second*5); err != nil {
-		return models.ShutdownError{Core: err, Message: "Daemon tasks did not stop in time"}
+		return models.NewShutdownError("Daemon tasks did not stop in time", err, true)
 	}
 
 	return nil
@@ -147,18 +147,18 @@ func BuildNewServer(
 		Host: configs.Redis.Host, Port: configs.Redis.Port, DBNumber: configs.Redis.DBNumber,
 	})
 	if err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "Failed to define REDIS client"}
+		return nil, models.NewBootStrapError("Failed to define REDIS client", err, true)
 	}
 
 	// Prepare persistence
 	persistence, err := db.NewConnection(db.GetSqliteDialector(configs.SQLite.DBFile), logger.Error)
 	if err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "Failed to prepare DB persistence client"}
+		return nil, models.NewBootStrapError("Failed to prepare DB persistence client", err, true)
 	}
 
 	// Setup the SQLite DB file
 	if err := persistence.RunSQLInTransaction(parentCtx, db.DefineTables); err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "DB migration failed"}
+		return nil, models.NewBootStrapError("DB migration failed", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ func BuildNewServer(
 		RunnerFactory: session.NewSessionRunner,
 	})
 	if err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "Failed to create session manager"}
+		return nil, models.NewBootStrapError("Failed to create session manager", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -186,7 +186,7 @@ func BuildNewServer(
 		log.Fields{"module": "utils", "component": "metrics-core"}, []goutils.LogMetadataModifier{},
 	)
 	if err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "Failed to create metrics collector"}
+		return nil, models.NewBootStrapError("Failed to create metrics collector", err, true)
 	}
 
 	if configs.Metrics.Features.EnableAppMetrics {
@@ -213,7 +213,7 @@ func BuildNewServer(
 		configs.API, persistence, redisClient, sessionManager, httpMetricsAgent,
 	)
 	if err != nil {
-		return nil, models.BootStrapError{Core: err, Message: "Failed to create API server"}
+		return nil, models.NewBootStrapError("Failed to create API server", err, true)
 	}
 
 	return &serverImpl{
