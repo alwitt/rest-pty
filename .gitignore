@@ -5,3 +5,4 @@ tmp/
 .test_prepare
 rest-pty
 demo
+.vscode

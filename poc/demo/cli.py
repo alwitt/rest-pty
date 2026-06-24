@@ -13,11 +13,16 @@ Examples:
 """
 
 import base64
+import ipaddress
 import json
+import re
 import sys
 
 import click
 import requests
+from prompt_toolkit import prompt
+from prompt_toolkit.shortcuts import radiolist_dialog
+from prompt_toolkit.validation import ValidationError, Validator
 
 # Default API location, matching the server defaults in models/configs.go
 # (api.service.listenOn 0.0.0.0 / appPort 38281, path prefix "/").
@@ -103,6 +108,98 @@ def cli(ctx, base_url):
 
 
 # ======================================================================================
+# Interactive prompt helpers (prompt_toolkit)
+
+DEFAULT_IO_BUF_CAP = 65536
+# Default container image for docker-driver sessions. `image` is required by the server and has
+# no server-side default; this matches the helper image used in the PoC.
+DEFAULT_DOCKER_IMAGE = "rest-pty-helper:latest"
+
+# Mirrors the server's session_name_type rule (models/validate.go): alphanumeric and '-'.
+SESSION_NAME_RE = re.compile(r"^[a-zA-Z0-9-]+$")
+
+
+class _RegexValidator(Validator):
+    """Validate non-blank input against a regex."""
+
+    def __init__(self, pattern, message):
+        self.pattern = pattern
+        self.message = message
+
+    def validate(self, document):
+        text = document.text.strip()
+        if not text or not self.pattern.match(text):
+            raise ValidationError(message=self.message, cursor_position=len(document.text))
+
+
+class _NonEmptyValidator(Validator):
+    """Validate that input is not blank."""
+
+    def __init__(self, message="A value is required"):
+        self.message = message
+
+    def validate(self, document):
+        if not document.text.strip():
+            raise ValidationError(message=self.message, cursor_position=len(document.text))
+
+
+class _IntValidator(Validator):
+    """Validate an integer, optionally bounded below and optionally allowing a blank (default)."""
+
+    def __init__(self, min_value=None, allow_blank=False):
+        self.min_value = min_value
+        self.allow_blank = allow_blank
+
+    def validate(self, document):
+        text = document.text.strip()
+        if not text:
+            if self.allow_blank:
+                return
+            raise ValidationError(message="A value is required")
+        try:
+            value = int(text)
+        except ValueError:
+            raise ValidationError(
+                message="Must be an integer", cursor_position=len(document.text)
+            )
+        if self.min_value is not None and value < self.min_value:
+            raise ValidationError(
+                message=f"Must be >= {self.min_value}", cursor_position=len(document.text)
+            )
+
+
+def _prompt_int(message, min_value=None, default=None):
+    """Prompt for an integer. A blank entry returns `default` when one is provided."""
+    text = prompt(
+        message,
+        validator=_IntValidator(min_value=min_value, allow_blank=default is not None),
+        validate_while_typing=False,
+    ).strip()
+    return default if not text else int(text)
+
+
+def _parse_interface_port(entry):
+    """Parse an '<interface>:<port>' entry into (host_ip, port).
+
+    Raises ValueError with a human message on malformed input.
+    """
+    host, sep, port_str = entry.rpartition(":")
+    if not sep:
+        raise ValueError("expected '<interface>:<port>', e.g. 127.0.0.1:8888")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        raise ValueError(f"invalid interface IP '{host}'")
+    try:
+        port = int(port_str)
+    except ValueError:
+        raise ValueError(f"invalid port '{port_str}'")
+    if not 1 <= port <= 65535:
+        raise ValueError(f"port {port} out of range (1-65535)")
+    return host, port
+
+
+# ======================================================================================
 # create
 
 
@@ -112,43 +209,111 @@ def create():
 
 
 @create.command("session")
-@click.option("--name", required=True, help="Session name (alphanumeric and '-').")
-@click.option("--description", default=None, help="Optional session description.")
-@click.option("--cmd", default="/bin/bash", show_default=True, help="Command to run.")
-@click.option(
-    "--arg",
-    "args",
-    multiple=True,
-    help="Argument for the command (repeatable).",
-)
-@click.option(
-    "--io-buf-cap",
-    type=int,
-    default=16384,
-    show_default=True,
-    help="Output buffer capacity in bytes (>= 16384).",
-)
-@click.option(
-    "--rows", type=int, default=40, show_default=True, help="PTY display rows (>= 30)."
-)
-@click.option(
-    "--cols", type=int, default=120, show_default=True, help="PTY display cols (>= 80)."
-)
 @click.pass_context
-def create_session(ctx, name, description, cmd, args, io_buf_cap, rows, cols):
-    """Define a new session (PTY driver)."""
+def create_session(ctx):
+    """Define a new session interactively.
+
+    Walks through the common session fields, then the driver selection. The
+    PTY driver needs nothing further; the Docker driver additionally collects
+    the container image and the interfaces/ports it should listen on.
+    """
+    try:
+        _create_session_interactive(ctx)
+    except (KeyboardInterrupt, EOFError):
+        click.echo("Aborted.", err=True)
+        sys.exit(1)
+
+
+def _create_session_interactive(ctx):
+    name = prompt(
+        "Session Name: ",
+        validator=_RegexValidator(
+            SESSION_NAME_RE, "Only alphanumeric characters and '-' are allowed"
+        ),
+        validate_while_typing=False,
+    ).strip()
+
+    io_buf_cap = _prompt_int(
+        f"Output Buffer Cap [Default {DEFAULT_IO_BUF_CAP}]: ",
+        min_value=16384,
+        default=DEFAULT_IO_BUF_CAP,
+    )
+
+    rows = _prompt_int("TTY display rows [Default 100]: ", min_value=30, default=100)
+    cols = _prompt_int("TTY display cols [Default 300]: ", min_value=80, default=300)
+
+    # The first whitespace-separated token is the command; the rest are arguments.
+    command_line = prompt(
+        "Run Command: ", validator=_NonEmptyValidator(), validate_while_typing=False
+    ).strip()
+    tokens = command_line.split()
+    command = {"cmd": tokens[0], "args": tokens[1:]}
+
+    driver = radiolist_dialog(
+        title="Session Driver",
+        text="Select the session driver type:",
+        values=[
+            ("PTY", "PTY (local pseudo-terminal)"),
+            ("DOCKER", "Docker (sandboxed container)"),
+        ],
+    ).run()
+    if driver is None:
+        raise KeyboardInterrupt
+
+    if driver == "PTY":
+        driver_metadata = {"display_rows": rows, "display_cols": cols}
+    else:
+        driver_metadata = _collect_docker_metadata(rows, cols)
+
     payload = {
         "name": name,
-        "command": {"cmd": cmd, "args": list(args)},
+        "command": command,
         "io_buf_cap": io_buf_cap,
-        "driver": "PTY",
-        "driver_metadata": {"display_rows": rows, "display_cols": cols},
+        "driver": driver,
+        "driver_metadata": driver_metadata,
     }
-    if description is not None:
-        payload["description"] = description
 
     resp = requests.post(sessions_url(ctx.obj["base_url"]), json=payload)
     show(resp)
+
+
+def _collect_docker_metadata(rows, cols):
+    """Collect docker-driver metadata: image and published listening ports.
+
+    The container always uses bridge networking. Listening interfaces/ports are
+    collected in a loop until a blank line; for each, the container port matches
+    the published host port. All other docker parameters use server defaults.
+    """
+    image = prompt(
+        "Container Image: ",
+        default=DEFAULT_DOCKER_IMAGE,
+        validator=_NonEmptyValidator(),
+        validate_while_typing=False,
+    ).strip()
+
+    publish_ports = []
+    while True:
+        entry = prompt("Interface And Port [blank to continue]: ").strip()
+        if not entry:
+            break
+        try:
+            host_ip, port = _parse_interface_port(entry)
+        except ValueError as exc:
+            click.echo(f"  {exc}", err=True)
+            continue
+        publish_ports.append(
+            {"container_port": port, "host_ip": host_ip, "host_port": port}
+        )
+
+    metadata = {
+        "image": image,
+        "display_rows": rows,
+        "display_cols": cols,
+        "network_mode": "bridge",
+    }
+    if publish_ports:
+        metadata["publish_ports"] = publish_ports
+    return metadata
 
 
 # ======================================================================================

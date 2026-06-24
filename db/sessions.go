@@ -39,6 +39,8 @@ func (d *databaseImpl) DefineNewSession(
 	switch driverParams.(type) {
 	case models.SessionDriverPTYParams:
 		driverType = models.SessionDriverTypePTY
+	case models.SessionDriverDockerParams:
+		driverType = models.SessionDriverTypeDocker
 	default:
 		return models.Session{}, goutils.NewValidationError(
 			"unsupported session driver metadata type "+reflect.TypeOf(driverParams).String(), nil, true,
@@ -318,6 +320,8 @@ func (d *databaseImpl) UpdateSessionDriver(
 	switch driverParams.(type) {
 	case models.SessionDriverPTYParams:
 		driverType = models.SessionDriverTypePTY
+	case models.SessionDriverDockerParams:
+		driverType = models.SessionDriverTypeDocker
 	default:
 		return goutils.NewValidationError(
 			"unsupported session driver metadata type "+reflect.TypeOf(driverParams).String(), nil, true,
