@@ -69,6 +69,8 @@ func prepareCoreDriver(
 	switch session.DriverType {
 	case models.SessionDriverTypePTY:
 		return newPTYCoreDriver(workingCtx, instanceID, session)
+	case models.SessionDriverTypeDocker:
+		return newDockerCoreDriver(workingCtx, instanceID, session)
 	default:
 		return nil, goutils.NewConsistencyError(
 			"Unknown session driver type "+string(session.DriverType), nil, true,

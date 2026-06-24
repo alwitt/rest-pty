@@ -117,6 +117,13 @@ func (s Session) ParseDriverMetadata(validator *validator.Validate) (interface{}
 		}
 		return parsed, validator.Struct(&parsed)
 
+	case SessionDriverTypeDocker:
+		var parsed SessionDriverDockerParams
+		if err := json.Unmarshal(s.DriverMetadata, &parsed); err != nil {
+			return nil, fmt.Errorf("session '%s' driver metadata parse failed [%w]", s.Name, err)
+		}
+		return parsed, validator.Struct(&parsed)
+
 	default:
 		return nil, fmt.Errorf("unsupported session driver type '%s'", s.DriverType)
 	}
@@ -129,6 +136,219 @@ type SessionDriverPTYParams struct {
 
 	// DisplayCol PTY number of columns (in cells).
 	DisplayCols uint16 `json:"display_cols" validate:"gte=80"`
+}
+
+// ContainerStopSignalENUMType signal used to request the container process to stop
+type ContainerStopSignalENUMType string
+
+const (
+	// ContainerStopSignalSIGINT stop the container process with SIGINT
+	ContainerStopSignalSIGINT ContainerStopSignalENUMType = "SIGINT"
+	// ContainerStopSignalSIGTERM stop the container process with SIGTERM
+	ContainerStopSignalSIGTERM ContainerStopSignalENUMType = "SIGTERM"
+	// ContainerStopSignalSIGQUIT stop the container process with SIGQUIT
+	ContainerStopSignalSIGQUIT ContainerStopSignalENUMType = "SIGQUIT"
+	// ContainerStopSignalSIGHUP stop the container process with SIGHUP
+	ContainerStopSignalSIGHUP ContainerStopSignalENUMType = "SIGHUP"
+	// ContainerStopSignalSIGKILL forcibly stop the container process with SIGKILL
+	ContainerStopSignalSIGKILL ContainerStopSignalENUMType = "SIGKILL"
+)
+
+// Default values applied for omitted docker driver parameters.
+const (
+	// DefaultContainerRunAsUser default container run-as user
+	DefaultContainerRunAsUser = "nobody"
+	// DefaultContainerRunAsGroup default container run-as group
+	DefaultContainerRunAsGroup = "nogroup"
+	// DefaultContainerWorkingDir default container working directory
+	DefaultContainerWorkingDir = "/tmp"
+	// DefaultContainerMemReservation default container memory reservation
+	DefaultContainerMemReservation = "32m"
+	// DefaultContainerMemLimit default container memory limit
+	DefaultContainerMemLimit = "128m"
+	// DefaultContainerTmpfsSize default writable tmpfs mount size in bytes (64 MiB)
+	DefaultContainerTmpfsSize = int64(67108864)
+	// DefaultContainerNetworkMode default container network mode (no networking)
+	DefaultContainerNetworkMode = "none"
+	// DefaultContainerStopSignal default signal used to stop the container process
+	DefaultContainerStopSignal = ContainerStopSignalSIGINT
+	// DefaultContainerPortProtocol default published port protocol
+	DefaultContainerPortProtocol = "tcp"
+	// DefaultContainerPublishHostIP default host interface a published port binds to
+	DefaultContainerPublishHostIP = "127.0.0.1"
+)
+
+// ContainerHostMount a host path bind-mounted into the container
+type ContainerHostMount struct {
+	// Path host path to mount (used as both source and target)
+	Path string `json:"path" validate:"required"`
+	// ReadOnly whether to mount the path read-only; defaults to true when nil
+	ReadOnly *bool `json:"read_only,omitempty"`
+}
+
+// IsReadOnly resolve ReadOnly, defaulting to true when unset
+func (m ContainerHostMount) IsReadOnly() bool {
+	if m.ReadOnly == nil {
+		return true
+	}
+	return *m.ReadOnly
+}
+
+// ContainerTmpfsMount a writable tmpfs mount within the (otherwise read-only) container
+type ContainerTmpfsMount struct {
+	// Path the directory within the container to back with a writable tmpfs
+	Path string `json:"path" validate:"required"`
+	// TmpfsSize size of the tmpfs mount in bytes; defaults to DefaultContainerTmpfsSize when 0
+	TmpfsSize int64 `json:"tmpfs_size,omitempty" validate:"omitempty,gt=0"`
+}
+
+// Size resolve TmpfsSize, defaulting when unset
+func (m ContainerTmpfsMount) Size() int64 {
+	if m.TmpfsSize <= 0 {
+		return DefaultContainerTmpfsSize
+	}
+	return m.TmpfsSize
+}
+
+// ContainerPortPublish publishes a container port to a host interface so the session
+// command can accept inbound connections
+type ContainerPortPublish struct {
+	// ContainerPort the port the session command listens on inside the container
+	ContainerPort uint16 `json:"container_port" validate:"required"`
+	// Protocol the port protocol; defaults to DefaultContainerPortProtocol when empty
+	Protocol string `json:"protocol,omitempty" validate:"omitempty,oneof=tcp udp"`
+	// HostPort the host port to bind; 0 requests an ephemeral host port
+	HostPort uint16 `json:"host_port,omitempty"`
+	// HostIP the host interface to bind to; defaults to DefaultContainerPublishHostIP when empty
+	HostIP string `json:"host_ip,omitempty" validate:"omitempty,ip"`
+}
+
+// ResolvedProtocol resolve Protocol, defaulting when empty
+func (p ContainerPortPublish) ResolvedProtocol() string {
+	if p.Protocol == "" {
+		return DefaultContainerPortProtocol
+	}
+	return p.Protocol
+}
+
+// ResolvedHostIP resolve HostIP, defaulting when empty
+func (p ContainerPortPublish) ResolvedHostIP() string {
+	if p.HostIP == "" {
+		return DefaultContainerPublishHostIP
+	}
+	return p.HostIP
+}
+
+// ContainerExtraHost an extra host-to-IP mapping injected into the container's /etc/hosts
+type ContainerExtraHost struct {
+	// Host the hostname to map
+	Host string `json:"host" validate:"required"`
+	// Address the IP address the hostname resolves to
+	Address string `json:"address" validate:"required,ip"`
+}
+
+// ContainerEnvVar an environment variable set on the container process
+type ContainerEnvVar struct {
+	// Name the environment variable name
+	Name string `json:"name" validate:"required"`
+	// Value the environment variable value
+	Value string `json:"value"`
+}
+
+// SessionDriverDockerParams parameters for docker-container session drivers.
+//
+// The container is run interactively with a TTY (mirroring the PTY driver), hardened by
+// default (read-only rootfs, all capabilities dropped, no-new-privileges) and isolated from
+// the network. Sessions that need to accept inbound connections must select a routable
+// NetworkMode and declare PublishPorts.
+type SessionDriverDockerParams struct {
+	// Image container image reference to run
+	Image string `json:"image" validate:"required"`
+
+	// DisplayRows TTY number of rows (in cells).
+	DisplayRows uint16 `json:"display_rows" validate:"gte=30"`
+	// DisplayCols TTY number of columns (in cells).
+	DisplayCols uint16 `json:"display_cols" validate:"gte=80"`
+
+	// MemReservation soft memory reservation (e.g. "32m"); defaults when empty
+	MemReservation string `json:"mem_reservation,omitempty"`
+	// MemLimit hard memory limit (e.g. "128m"); defaults when empty
+	MemLimit string `json:"mem_limit,omitempty"`
+
+	// RunAsUser user to run the container process as; defaults to DefaultContainerRunAsUser
+	RunAsUser string `json:"run_as_user,omitempty"`
+	// RunAsGroup group to run the container process as; defaults to DefaultContainerRunAsGroup
+	RunAsGroup string `json:"run_as_group,omitempty"`
+	// WorkingDir working directory for the container process; defaults to DefaultContainerWorkingDir
+	WorkingDir string `json:"working_dir,omitempty"`
+
+	// WritableDirs tmpfs mounts providing writable directories within the read-only rootfs
+	WritableDirs []ContainerTmpfsMount `json:"writable_dirs,omitempty" validate:"omitempty,dive"`
+	// HostMounts host paths bind-mounted into the container
+	HostMounts []ContainerHostMount `json:"host_mounts,omitempty" validate:"omitempty,dive"`
+
+	// AddCapabilities Linux capabilities to add back on top of the dropped-by-default set
+	// (e.g. NET_BIND_SERVICE to bind ports below 1024)
+	AddCapabilities []string `json:"add_caps,omitempty"`
+
+	// NetworkMode the container network mode (e.g. "none", "bridge"); defaults to
+	// DefaultContainerNetworkMode. Must be routable when PublishPorts is set.
+	NetworkMode string `json:"network_mode,omitempty"`
+	// PublishPorts container ports published to the host for inbound connections
+	PublishPorts []ContainerPortPublish `json:"publish_ports,omitempty" validate:"omitempty,dive"`
+	// ExtraHosts additional host-to-IP mappings for the container
+	ExtraHosts []ContainerExtraHost `json:"extra_hosts,omitempty" validate:"omitempty,dive"`
+	// Environment additional environment variables for the container process
+	Environment []ContainerEnvVar `json:"environment,omitempty" validate:"omitempty,dive"`
+
+	// StopSignal signal sent to request the container process stop during teardown;
+	// defaults to DefaultContainerStopSignal when empty
+	StopSignal ContainerStopSignalENUMType `json:"stop_signal,omitempty" validate:"omitempty,container_stop_signal"`
+
+	// ReadOnlyRootFS mount the container root filesystem read-only; defaults to true when nil
+	ReadOnlyRootFS *bool `json:"read_only_rootfs,omitempty"`
+	// DropAllCapabilities drop all Linux capabilities; defaults to true when nil
+	DropAllCapabilities *bool `json:"drop_all_caps,omitempty"`
+	// NoNewPrivileges set the no-new-privileges security option; defaults to true when nil
+	NoNewPrivileges *bool `json:"no_new_privileges,omitempty"`
+	// RemoveOnExit remove the container on teardown; defaults to true when nil
+	RemoveOnExit *bool `json:"remove_on_exit,omitempty"`
+}
+
+// IsReadOnlyRootFS resolve ReadOnlyRootFS, defaulting to true when unset
+func (p SessionDriverDockerParams) IsReadOnlyRootFS() bool {
+	return boolOrTrue(p.ReadOnlyRootFS)
+}
+
+// IsDropAllCapabilities resolve DropAllCapabilities, defaulting to true when unset
+func (p SessionDriverDockerParams) IsDropAllCapabilities() bool {
+	return boolOrTrue(p.DropAllCapabilities)
+}
+
+// IsNoNewPrivileges resolve NoNewPrivileges, defaulting to true when unset
+func (p SessionDriverDockerParams) IsNoNewPrivileges() bool {
+	return boolOrTrue(p.NoNewPrivileges)
+}
+
+// IsRemoveOnExit resolve RemoveOnExit, defaulting to true when unset
+func (p SessionDriverDockerParams) IsRemoveOnExit() bool {
+	return boolOrTrue(p.RemoveOnExit)
+}
+
+// ResolvedStopSignal resolve StopSignal, defaulting when empty
+func (p SessionDriverDockerParams) ResolvedStopSignal() ContainerStopSignalENUMType {
+	if p.StopSignal == "" {
+		return DefaultContainerStopSignal
+	}
+	return p.StopSignal
+}
+
+// boolOrTrue resolve an optional bool, defaulting to true when nil
+func boolOrTrue(v *bool) bool {
+	if v == nil {
+		return true
+	}
+	return *v
 }
 
 // ValidNextState verify the session can transition to new state

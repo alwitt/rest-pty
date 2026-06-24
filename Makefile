@@ -23,6 +23,11 @@ fix: .prepare ## Lint and fix violations
 build: lint ## Build application
 	@go build -o rest-pty .
 
+.PHONY: demo
+demo: lint ## Build demo application
+	@docker build -t rest-pty-helper:latest -f poc/pty/Dockerfile ./poc/pty/
+	@go build -o demo ./poc/pty/...
+
 .PHONY: test
 test: .prepare ## Run unit tests
 	go test --count 1 -timeout 60s -short ./...

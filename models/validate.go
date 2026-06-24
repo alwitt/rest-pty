@@ -50,7 +50,14 @@ func RegisterWithValidator(v *validator.Validate) error {
 		return err
 	}
 
+	if err := v.RegisterValidation(
+		"container_stop_signal", validateContainerStopSignal,
+	); err != nil {
+		return err
+	}
+
 	v.RegisterStructValidation(validateSessionInputCommand, SessionInputCommand{})
+	v.RegisterStructValidation(validateSessionDriverDockerParams, SessionDriverDockerParams{})
 
 	return nil
 }
@@ -106,6 +113,48 @@ func validateSessionInputCmdType(fl validator.FieldLevel) bool {
 		return true
 	}
 	return false
+}
+
+func validateContainerStopSignal(fl validator.FieldLevel) bool {
+	if fl.Field().Kind() != reflect.String {
+		return false
+	}
+	switch ContainerStopSignalENUMType(fl.Field().String()) {
+	case ContainerStopSignalSIGINT:
+		fallthrough
+	case ContainerStopSignalSIGTERM:
+		fallthrough
+	case ContainerStopSignalSIGQUIT:
+		fallthrough
+	case ContainerStopSignalSIGHUP:
+		fallthrough
+	case ContainerStopSignalSIGKILL:
+		return true
+	}
+	return false
+}
+
+// validateSessionDriverDockerParams struct-level validation for SessionDriverDockerParams.
+// Publishing ports for inbound connections requires a routable network mode; the default
+// "none" network mode (also the empty-string default) cannot accept inbound connections.
+func validateSessionDriverDockerParams(sl validator.StructLevel) {
+	params := sl.Current().Interface().(SessionDriverDockerParams)
+	if len(params.PublishPorts) == 0 {
+		return
+	}
+	networkMode := params.NetworkMode
+	if networkMode == "" {
+		networkMode = DefaultContainerNetworkMode
+	}
+	if networkMode == "none" {
+		sl.ReportError(
+			params.PublishPorts,
+			"PublishPorts",
+			"PublishPorts",
+			"publish_ports requires a routable network_mode (not 'none')",
+			"",
+		)
+	}
 }
 
 func validateSessionDriverType(fl validator.FieldLevel) bool {

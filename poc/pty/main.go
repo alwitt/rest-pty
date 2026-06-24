@@ -24,7 +24,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-func TestPoC() error {
+func PTYPoC() error {
 	// Create arbitrary command.
 	c := exec.Command("bash")
 
@@ -75,37 +75,67 @@ func TestPoC() error {
 	return nil
 }
 
-func TestPtyDriver() error {
-	log.SetLevel(log.InfoLevel)
-
-	getRedisParams := func() goutilsRedis.ConnectionConfig {
-		serverHostStr := os.Getenv("UNITTEST_REDIS_HOST")
-		if serverHostStr == "" {
-			serverHostStr = "127.0.0.1"
-		}
-		serverPortStr := os.Getenv("UNITTEST_REDIS_PORT")
-		if serverPortStr == "" {
-			serverPortStr = "6479"
-		}
-		serverDBStr := os.Getenv("UNITTEST_REDIS_DB")
-		if serverDBStr == "" {
-			serverDBStr = "1"
-		}
-
-		serverPort, err := strconv.Atoi(serverPortStr)
-		if err != nil {
-			log.WithError(err).Fatal("UNITTEST_REDIS_PORT is not int")
-		}
-
-		serverDB, err := strconv.Atoi(serverDBStr)
-		if err != nil {
-			log.WithError(err).Fatal("UNITTEST_REDIS_DB is not int")
-		}
-
-		return goutilsRedis.ConnectionConfig{
-			Host: serverHostStr, Port: uint16(serverPort), DBNumber: uint32(serverDB),
-		}
+// getRedisParams read REDIS connection parameters from ENV
+func getRedisParams() goutilsRedis.ConnectionConfig {
+	serverHostStr := os.Getenv("UNITTEST_REDIS_HOST")
+	if serverHostStr == "" {
+		serverHostStr = "127.0.0.1"
 	}
+	serverPortStr := os.Getenv("UNITTEST_REDIS_PORT")
+	if serverPortStr == "" {
+		serverPortStr = "6479"
+	}
+	serverDBStr := os.Getenv("UNITTEST_REDIS_DB")
+	if serverDBStr == "" {
+		serverDBStr = "1"
+	}
+
+	serverPort, err := strconv.Atoi(serverPortStr)
+	if err != nil {
+		log.WithError(err).Fatal("UNITTEST_REDIS_PORT is not int")
+	}
+
+	serverDB, err := strconv.Atoi(serverDBStr)
+	if err != nil {
+		log.WithError(err).Fatal("UNITTEST_REDIS_DB is not int")
+	}
+
+	return goutilsRedis.ConnectionConfig{
+		Host: serverHostStr, Port: uint16(serverPort), DBNumber: uint32(serverDB),
+	}
+}
+
+func preparePTYSession(session *models.Session) {
+	session.DriverType = models.SessionDriverTypePTY
+	// Set PTY metadata
+	driverMeta := models.SessionDriverPTYParams{DisplayRows: 100, DisplayCols: 300}
+	driverMetadataStr, _ := json.Marshal(&driverMeta)
+	session.DriverMetadata = datatypes.JSON(driverMetadataStr)
+}
+
+func prepareDockerSession(session *models.Session) {
+	session.DriverType = models.SessionDriverTypeDocker
+	// Set docker metadata
+	driverMeta := models.SessionDriverDockerParams{
+		Image:       "rest-pty-helper:latest",
+		DisplayRows: 100,
+		DisplayCols: 300,
+		NetworkMode: "bridge",
+		PublishPorts: []models.ContainerPortPublish{
+			{
+				ContainerPort: 5555,
+				Protocol:      "tcp",
+				HostPort:      5555,
+				HostIP:        "127.0.0.1",
+			},
+		},
+	}
+	driverMetadataStr, _ := json.Marshal(&driverMeta)
+	session.DriverMetadata = datatypes.JSON(driverMetadataStr)
+}
+
+func SessionDriverPoC(sessionType models.SessionDriverTypeENUMType) error {
+	log.SetLevel(log.InfoLevel)
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer ctxCancel()
@@ -118,19 +148,24 @@ func TestPtyDriver() error {
 
 	bufferCapacity := int64(32 * 1024 * 1024)
 	shellSession := models.Session{
-		ID:                   ulid.Make().String(),
-		Name:                 "poc-session-driver",
-		Command:              models.SessionCommand{Command: "bash"},
+		ID:   ulid.Make().String(),
+		Name: "poc-session-driver",
+		Command: models.SessionCommand{
+			Command: "/usr/bin/nc", Arguments: []string{"-v", "-l", "-p", "5555"},
+		},
 		State:                models.SessionStateReady,
-		DriverType:           models.SessionDriverTypePTY,
 		DriverMetadata:       nil,
 		OutputBufferCapacity: bufferCapacity,
 	}
-	{
-		// Set PTY metadata
-		driverMeta := models.SessionDriverPTYParams{DisplayRows: 100, DisplayCols: 300}
-		driverMetadataStr, _ := json.Marshal(&driverMeta)
-		shellSession.DriverMetadata = datatypes.JSON(driverMetadataStr)
+
+	// Perform driver specific setup
+	switch sessionType {
+	case models.SessionDriverTypePTY:
+		preparePTYSession(&shellSession)
+	case models.SessionDriverTypeDocker:
+		prepareDockerSession(&shellSession)
+	default:
+		return goutils.NewRuntimeError("unsupported session driver "+string(sessionType), nil, true)
 	}
 
 	// Define the driver
@@ -174,7 +209,10 @@ func TestPtyDriver() error {
 	}
 	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }() // Best effort.
 
-	log.Warn("\n==================== [PTY Driver] Starting shell session =======================\n")
+	log.Warnf(
+		"\n==================== [%s Driver] Starting shell session =======================\n",
+		sessionType,
+	)
 	go func() {
 		input := inputBuf.AsReadWriteCloser(ctx, 0, time.Millisecond*5)
 		_, err := io.Copy(input, os.Stdin)
@@ -189,16 +227,19 @@ func TestPtyDriver() error {
 			return goutils.NewRuntimeError("OUTPUT piping failed", err, true)
 		}
 	}
-	log.Warn("\n==================== [PTY Driver] Ended shell session =======================\n")
+	log.Warnf(
+		"\n==================== [%s Driver] Ended shell session =======================\n",
+		sessionType,
+	)
 
 	return nil
 }
 
 func main() {
-	// if err := testPoC(); err != nil {
+	// if err := PTYPoC(); err != nil {
 	// 	log.WithError(err).Fatal("PTY Direct Failed")
 	// }
-	if err := TestPtyDriver(); err != nil {
+	if err := SessionDriverPoC(models.SessionDriverTypeDocker); err != nil {
 		log.WithError(err).Fatal("PTY Driver Failed")
 	}
 }
