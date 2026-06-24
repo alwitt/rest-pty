@@ -80,7 +80,7 @@ func NewSessionManagerHandler(
 // Alive godoc
 // @Summary API liveness check
 // @Description Will return success to indicate REST API module is live
-// @tags util,management
+// @tags util
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Success 200 {object} goutils.RestAPIBaseResponse "success"
@@ -100,7 +100,7 @@ func (h SessionManagerHandler) Alive(w http.ResponseWriter, r *http.Request) {
 // Ready godoc
 // @Summary API readiness check
 // @Description Will return success to indicate REST API module is ready
-// @tags util,management
+// @tags util
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Success 200 {object} goutils.RestAPIBaseResponse "success"
@@ -162,7 +162,7 @@ type SessionEntryResponse struct {
 // DefineNewSession godoc
 // @Summary Define a new session
 // @Description Define a new session
-// @tags management,session
+// @tags management
 // @Accept json
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
@@ -310,7 +310,7 @@ type SessionListResponse struct {
 // ListSessions godoc
 // @Summary List sessions
 // @Description List the known sessions, with optional filtering and ordering
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param name query string false "Filter by sessions whose name is similar to this, case insensitive"
@@ -444,7 +444,7 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 // GetSession godoc
 // @Summary Get one session
 // @Description Fetch one session by its name
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -503,7 +503,7 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 // UpdateSessionOutputBufCapacity godoc
 // @Summary Change session output buffer capacity
 // @Description Change the output buffer capacity of a session. Only permitted on IDLE sessions.
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -593,7 +593,7 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 // UpdateSessionRunMode godoc
 // @Summary Change session runner mode
 // @Description Change the runner mode of a session. Only permitted on IDLE sessions.
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -674,7 +674,7 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 // UpdateSessionCommand godoc
 // @Summary Change session command
 // @Description Change the command a session runs. Only permitted on IDLE sessions.
-// @tags management,session
+// @tags management
 // @Accept json
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
@@ -783,7 +783,7 @@ type UpdateSessionDriverRequest struct {
 // UpdateSessionDriver godoc
 // @Summary Change session driver
 // @Description Change the driver a session uses, along with its setup metadata. Only permitted on IDLE sessions.
-// @tags management,session
+// @tags management
 // @Accept json
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
@@ -919,7 +919,7 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 // UpdateSessionName godoc
 // @Summary Change session name
 // @Description Change the name of a session
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -997,7 +997,7 @@ type UpdateSessionDescriptionRequest struct {
 // UpdateSessionDescription godoc
 // @Summary Change session description
 // @Description Change the description of a session
-// @tags management,session
+// @tags management
 // @Accept json
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
@@ -1091,7 +1091,7 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 // DeleteSession godoc
 // @Summary Delete a session
 // @Description Delete a session. Only permitted on IDLE sessions.
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -1155,7 +1155,7 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 // @Description Bring up a session runner for an existing session and start it. By default
 // @Description the request to the session manager is non-blocking; set "block" to true to
 // @Description wait for the start to complete.
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -1230,7 +1230,7 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 // @Description Bring a session back to IDLE and unload its runner. By default the request
 // @Description to the session manager is non-blocking; set "block" to true to wait for the
 // @Description stop to complete.
-// @tags management,session
+// @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"

@@ -93,7 +93,7 @@ type Session struct {
 	DriverType SessionDriverTypeENUMType `json:"driver" gorm:"column:driver;not null" validate:"required,session_driver_type"`
 
 	// DriverMetadata metadata relating to the session driver
-	DriverMetadata datatypes.JSON `json:"driver_metadata,omitempty" gorm:"column:driver_metadata;default:null"`
+	DriverMetadata datatypes.JSON `json:"driver_metadata,omitempty" gorm:"column:driver_metadata;default:null" swaggertype:"string"`
 
 	// OutputBufferCapacity buffering capacity for holding command output history
 	OutputBufferCapacity int64 `json:"io_buf_cap" gorm:"column:io_buf_cap;not null" validate:"required,gte=16384"`

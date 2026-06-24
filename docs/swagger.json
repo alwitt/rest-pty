@@ -1,0 +1,1552 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "REST API Wrapper Around PTY",
+        "title": "rest-pty",
+        "contact": {},
+        "version": "v0.1.0-rc1"
+    },
+    "host": "localhost:38281",
+    "basePath": "/",
+    "paths": {
+        "/liveness/alive": {
+            "get": {
+                "description": "Will return success to indicate REST API module is live",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "util"
+                ],
+                "summary": "API liveness check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/liveness/ready": {
+            "get": {
+                "description": "Will return success to indicate REST API module is ready",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "util"
+                ],
+                "summary": "API readiness check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions": {
+            "get": {
+                "description": "List the known sessions, with optional filtering and ordering",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "List sessions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by sessions whose name is similar to this, case insensitive",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of leading entries to skip",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max number of entries to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Filter by session driver type",
+                        "name": "driver",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "multi",
+                        "description": "Filter by session state",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether to order the results by session name",
+                        "name": "order_by_name",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc",
+                            "ASC",
+                            "DESC"
+                        ],
+                        "type": "string",
+                        "description": "Ordering direction, defaults to 'ASC'",
+                        "name": "order_dir",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SessionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Define a new session",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Define a new session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "description": "Session parameters",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.NewSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SessionEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}": {
+            "get": {
+                "description": "Fetch one session by its name",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Get one session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SessionEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete a session. Only permitted on IDLE sessions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Delete a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/command": {
+            "put": {
+                "description": "Change the command a session runs. Only permitted on IDLE sessions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session command",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New session command",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SessionCommand"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/description": {
+            "put": {
+                "description": "Change the description of a session",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session description",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New session description",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UpdateSessionDescriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/driver": {
+            "put": {
+                "description": "Change the driver a session uses, along with its setup metadata. Only permitted on IDLE sessions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session driver",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New session driver parameters",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UpdateSessionDriverRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/io/input/commands": {
+            "post": {
+                "description": "Submit user commands to session runner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "io"
+                ],
+                "summary": "Submit user commands",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User commands",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UserCommandRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/io/output/chunk": {
+            "get": {
+                "description": "Read one chunk of data from a session's output ring buffer. As the buffer only\nretains the most recent bytes, the requested offset may have aged out; in that\ncase the read is moved forward and \"actual_offset\" reports where the data starts.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "io"
+                ],
+                "summary": "Read one chunk of session output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Read index position within the session output stream",
+                        "name": "offset",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max number of bytes to read",
+                        "name": "limit",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Strip ANSI escape sequences from the returned data",
+                        "name": "strip_ansi",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SessionOutputChunkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/io/output/tail": {
+            "get": {
+                "description": "Continuously stream a session's output via server-sent events (SSE). Each event\ncarries a base64 encoded chunk of bytes read from the output ring buffer. The\nstream runs until the client disconnects.",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "io"
+                ],
+                "summary": "Tail session output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Read index position to start tailing from",
+                        "name": "offset",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Milliseconds between buffer data availability checks (default 250)",
+                        "name": "poll_period_msec",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Strip ANSI escape sequences from the streamed data",
+                        "name": "strip_ansi",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/name": {
+            "put": {
+                "description": "Change the name of a session",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "New session name, can only contain alphanumeric characters and -",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/output-buf-cap": {
+            "put": {
+                "description": "Change the output buffer capacity of a session. Only permitted on IDLE sessions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session output buffer capacity",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "New output buffer capacity",
+                        "name": "capacity",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/run-mode": {
+            "put": {
+                "description": "Change the runner mode of a session. Only permitted on IDLE sessions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session runner mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "COMMANDED",
+                            "BY_PASSED"
+                        ],
+                        "type": "string",
+                        "description": "New session runner mode",
+                        "name": "mode",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/start": {
+            "post": {
+                "description": "Bring up a session runner for an existing session and start it. By default\nthe request to the session manager is non-blocking; set \"block\" to true to\nwait for the start to complete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Start a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether to block until the start completes",
+                        "name": "block",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/sessions/{sessionName}/stop": {
+            "post": {
+                "description": "Bring a session back to IDLE and unload its runner. By default the request\nto the session manager is non-blocking; set \"block\" to true to wait for the\nstop to complete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Stop a session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether to block until the stop completes",
+                        "name": "block",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.NewSessionRequest": {
+            "type": "object"
+        },
+        "api.SessionEntryResponse": {
+            "type": "object",
+            "required": [
+                "request_id",
+                "session",
+                "success"
+            ],
+            "properties": {
+                "error": {
+                    "description": "Error are details in case of errors",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/goutils.ErrorDetail"
+                        }
+                    ]
+                },
+                "request_id": {
+                    "description": "RequestID gives the request ID to match against logs",
+                    "type": "string"
+                },
+                "session": {
+                    "description": "Session the session",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    ]
+                },
+                "success": {
+                    "description": "Success indicates whether the request was successful",
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.SessionListResponse": {
+            "type": "object",
+            "required": [
+                "request_id",
+                "success"
+            ],
+            "properties": {
+                "error": {
+                    "description": "Error are details in case of errors",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/goutils.ErrorDetail"
+                        }
+                    ]
+                },
+                "request_id": {
+                    "description": "RequestID gives the request ID to match against logs",
+                    "type": "string"
+                },
+                "sessions": {
+                    "description": "Sessions the list of sessions",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Session"
+                    }
+                },
+                "success": {
+                    "description": "Success indicates whether the request was successful",
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.SessionOutputChunkResponse": {
+            "type": "object",
+            "required": [
+                "request_id",
+                "success"
+            ],
+            "properties": {
+                "actual_offset": {
+                    "description": "ActualOffset the offset the returned data actually starts at. When the requested offset\nhas already aged out of the ring buffer, the read is moved forward to the oldest byte\nstill in the buffer, and this reports that position.",
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "data": {
+                    "description": "Data base64 encoded chunk read from the buffer",
+                    "type": "string"
+                },
+                "error": {
+                    "description": "Error are details in case of errors",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/goutils.ErrorDetail"
+                        }
+                    ]
+                },
+                "read": {
+                    "description": "Read number of bytes actually read from the buffer",
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "request_id": {
+                    "description": "RequestID gives the request ID to match against logs",
+                    "type": "string"
+                },
+                "success": {
+                    "description": "Success indicates whether the request was successful",
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.UpdateSessionDescriptionRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "description": "Description new session description, set to null to clear",
+                    "type": "string"
+                }
+            }
+        },
+        "api.UpdateSessionDriverRequest": {
+            "type": "object"
+        },
+        "api.UserCommandRequest": {
+            "type": "object",
+            "required": [
+                "commands"
+            ],
+            "properties": {
+                "commands": {
+                    "description": "Commands the list of commands to send to the session",
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/models.SessionInputCommand"
+                    }
+                }
+            }
+        },
+        "goutils.ErrorDetail": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "description": "Code is the response code",
+                    "type": "integer"
+                },
+                "detail": {
+                    "description": "Detail is an optional descriptive message providing additional details on the error",
+                    "type": "string"
+                },
+                "message": {
+                    "description": "Msg is an optional descriptive message",
+                    "type": "string"
+                }
+            }
+        },
+        "goutils.RestAPIBaseResponse": {
+            "type": "object",
+            "required": [
+                "request_id",
+                "success"
+            ],
+            "properties": {
+                "error": {
+                    "description": "Error are details in case of errors",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/goutils.ErrorDetail"
+                        }
+                    ]
+                },
+                "request_id": {
+                    "description": "RequestID gives the request ID to match against logs",
+                    "type": "string"
+                },
+                "success": {
+                    "description": "Success indicates whether the request was successful",
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.Session": {
+            "type": "object",
+            "required": [
+                "command",
+                "driver",
+                "id",
+                "io_buf_cap",
+                "name",
+                "runner_mode",
+                "state"
+            ],
+            "properties": {
+                "command": {
+                    "description": "Command being executed by the session",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SessionCommand"
+                        }
+                    ]
+                },
+                "created_at": {
+                    "description": "CreatedAt entry creation timestamp",
+                    "type": "string"
+                },
+                "description": {
+                    "description": "Description an optional description for the session",
+                    "type": "string"
+                },
+                "driver": {
+                    "description": "DriverType indicate which driver the session uses",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SessionDriverTypeENUMType"
+                        }
+                    ]
+                },
+                "driver_metadata": {
+                    "description": "DriverMetadata metadata relating to the session driver",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID PTY session ID",
+                    "type": "string"
+                },
+                "io_buf_cap": {
+                    "description": "OutputBufferCapacity buffering capacity for holding command output history",
+                    "type": "integer",
+                    "minimum": 16384
+                },
+                "name": {
+                    "description": "Name for the session, can only contain alphanumeric characters and -",
+                    "type": "string"
+                },
+                "runner_mode": {
+                    "description": "SessionRunnerModeTypeENUMType session runner operating mode",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SessionRunnerModeTypeENUMType"
+                        }
+                    ]
+                },
+                "state": {
+                    "description": "State of the session",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SessionStateENUMType"
+                        }
+                    ]
+                },
+                "updated_at": {
+                    "description": "UpdatedAt entry update timestamp",
+                    "type": "string"
+                }
+            }
+        },
+        "models.SessionCommand": {
+            "type": "object",
+            "required": [
+                "cmd"
+            ],
+            "properties": {
+                "args": {
+                    "description": "Arguments the arguments passed to the command",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cmd": {
+                    "description": "Command the command being ran",
+                    "type": "string"
+                }
+            }
+        },
+        "models.SessionDriverTypeENUMType": {
+            "type": "string",
+            "enum": [
+                "PTY",
+                "DOCKER"
+            ],
+            "x-enum-varnames": [
+                "SessionDriverTypePTY",
+                "SessionDriverTypeDocker"
+            ]
+        },
+        "models.SessionInputCommand": {
+            "type": "object",
+            "required": [
+                "type"
+            ],
+            "properties": {
+                "content": {
+                    "description": "Content command content if needed\n\n\t\tFor `TEXT` type, the content is the text to write to STDIN.\n\n\t\tFor `CTRL` type, the content is the control character (e.g. C for CTRL+C, etc.).\n\n\t\tFor `ENTRY` type, the content is ignored",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "Type session input command type",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SessionInputCommandTypeENUMType"
+                        }
+                    ]
+                }
+            }
+        },
+        "models.SessionInputCommandTypeENUMType": {
+            "type": "string",
+            "enum": [
+                "TEXT",
+                "CTRL",
+                "ENTER"
+            ],
+            "x-enum-varnames": [
+                "SessionInputCommandTypeText",
+                "SessionInputCommandTypeCTRL",
+                "SessionInputCommandTypeCR"
+            ]
+        },
+        "models.SessionRunnerModeTypeENUMType": {
+            "type": "string",
+            "enum": [
+                "COMMANDED",
+                "BY_PASSED"
+            ],
+            "x-enum-varnames": [
+                "SessionRunnerModeTypeCommanded",
+                "SessionRunnerModeTypeByPassed"
+            ]
+        },
+        "models.SessionStateENUMType": {
+            "type": "string",
+            "enum": [
+                "IDLE",
+                "READY"
+            ],
+            "x-enum-varnames": [
+                "SessionStateIdle",
+                "SessionStateReady"
+            ]
+        }
+    }
+}

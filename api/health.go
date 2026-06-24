@@ -57,7 +57,7 @@ func NewLivenessHandler(
 // Alive godoc
 // @Summary API liveness check
 // @Description Will return success to indicate REST API module is live
-// @tags util,management
+// @tags util
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Success 200 {object} goutils.RestAPIBaseResponse "success"
@@ -77,7 +77,7 @@ func (h LivenessHandler) Alive(w http.ResponseWriter, r *http.Request) {
 // Ready godoc
 // @Summary API readiness check
 // @Description Will return success to indicate REST API module is ready
-// @tags util,management
+// @tags util
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Success 200 {object} goutils.RestAPIBaseResponse "success"

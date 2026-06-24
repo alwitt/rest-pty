@@ -1,0 +1,1058 @@
+basePath: /
+definitions:
+  api.NewSessionRequest:
+    type: object
+  api.SessionEntryResponse:
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/goutils.ErrorDetail'
+        description: Error are details in case of errors
+      request_id:
+        description: RequestID gives the request ID to match against logs
+        type: string
+      session:
+        allOf:
+        - $ref: '#/definitions/models.Session'
+        description: Session the session
+      success:
+        description: Success indicates whether the request was successful
+        type: boolean
+    required:
+    - request_id
+    - session
+    - success
+    type: object
+  api.SessionListResponse:
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/goutils.ErrorDetail'
+        description: Error are details in case of errors
+      request_id:
+        description: RequestID gives the request ID to match against logs
+        type: string
+      sessions:
+        description: Sessions the list of sessions
+        items:
+          $ref: '#/definitions/models.Session'
+        type: array
+      success:
+        description: Success indicates whether the request was successful
+        type: boolean
+    required:
+    - request_id
+    - success
+    type: object
+  api.SessionOutputChunkResponse:
+    properties:
+      actual_offset:
+        description: |-
+          ActualOffset the offset the returned data actually starts at. When the requested offset
+          has already aged out of the ring buffer, the read is moved forward to the oldest byte
+          still in the buffer, and this reports that position.
+        minimum: 0
+        type: integer
+      data:
+        description: Data base64 encoded chunk read from the buffer
+        type: string
+      error:
+        allOf:
+        - $ref: '#/definitions/goutils.ErrorDetail'
+        description: Error are details in case of errors
+      read:
+        description: Read number of bytes actually read from the buffer
+        minimum: 0
+        type: integer
+      request_id:
+        description: RequestID gives the request ID to match against logs
+        type: string
+      success:
+        description: Success indicates whether the request was successful
+        type: boolean
+    required:
+    - request_id
+    - success
+    type: object
+  api.UpdateSessionDescriptionRequest:
+    properties:
+      description:
+        description: Description new session description, set to null to clear
+        type: string
+    type: object
+  api.UpdateSessionDriverRequest:
+    type: object
+  api.UserCommandRequest:
+    properties:
+      commands:
+        description: Commands the list of commands to send to the session
+        items:
+          $ref: '#/definitions/models.SessionInputCommand'
+        minItems: 1
+        type: array
+    required:
+    - commands
+    type: object
+  goutils.ErrorDetail:
+    properties:
+      code:
+        description: Code is the response code
+        type: integer
+      detail:
+        description: Detail is an optional descriptive message providing additional
+          details on the error
+        type: string
+      message:
+        description: Msg is an optional descriptive message
+        type: string
+    required:
+    - code
+    type: object
+  goutils.RestAPIBaseResponse:
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/goutils.ErrorDetail'
+        description: Error are details in case of errors
+      request_id:
+        description: RequestID gives the request ID to match against logs
+        type: string
+      success:
+        description: Success indicates whether the request was successful
+        type: boolean
+    required:
+    - request_id
+    - success
+    type: object
+  models.Session:
+    properties:
+      command:
+        allOf:
+        - $ref: '#/definitions/models.SessionCommand'
+        description: Command being executed by the session
+      created_at:
+        description: CreatedAt entry creation timestamp
+        type: string
+      description:
+        description: Description an optional description for the session
+        type: string
+      driver:
+        allOf:
+        - $ref: '#/definitions/models.SessionDriverTypeENUMType'
+        description: DriverType indicate which driver the session uses
+      driver_metadata:
+        description: DriverMetadata metadata relating to the session driver
+        type: string
+      id:
+        description: ID PTY session ID
+        type: string
+      io_buf_cap:
+        description: OutputBufferCapacity buffering capacity for holding command output
+          history
+        minimum: 16384
+        type: integer
+      name:
+        description: Name for the session, can only contain alphanumeric characters
+          and -
+        type: string
+      runner_mode:
+        allOf:
+        - $ref: '#/definitions/models.SessionRunnerModeTypeENUMType'
+        description: SessionRunnerModeTypeENUMType session runner operating mode
+      state:
+        allOf:
+        - $ref: '#/definitions/models.SessionStateENUMType'
+        description: State of the session
+      updated_at:
+        description: UpdatedAt entry update timestamp
+        type: string
+    required:
+    - command
+    - driver
+    - id
+    - io_buf_cap
+    - name
+    - runner_mode
+    - state
+    type: object
+  models.SessionCommand:
+    properties:
+      args:
+        description: Arguments the arguments passed to the command
+        items:
+          type: string
+        type: array
+      cmd:
+        description: Command the command being ran
+        type: string
+    required:
+    - cmd
+    type: object
+  models.SessionDriverTypeENUMType:
+    enum:
+    - PTY
+    - DOCKER
+    type: string
+    x-enum-varnames:
+    - SessionDriverTypePTY
+    - SessionDriverTypeDocker
+  models.SessionInputCommand:
+    properties:
+      content:
+        description: "Content command content if needed\n\n\t\tFor `TEXT` type, the
+          content is the text to write to STDIN.\n\n\t\tFor `CTRL` type, the content
+          is the control character (e.g. C for CTRL+C, etc.).\n\n\t\tFor `ENTRY` type,
+          the content is ignored"
+        type: string
+      type:
+        allOf:
+        - $ref: '#/definitions/models.SessionInputCommandTypeENUMType'
+        description: Type session input command type
+    required:
+    - type
+    type: object
+  models.SessionInputCommandTypeENUMType:
+    enum:
+    - TEXT
+    - CTRL
+    - ENTER
+    type: string
+    x-enum-varnames:
+    - SessionInputCommandTypeText
+    - SessionInputCommandTypeCTRL
+    - SessionInputCommandTypeCR
+  models.SessionRunnerModeTypeENUMType:
+    enum:
+    - COMMANDED
+    - BY_PASSED
+    type: string
+    x-enum-varnames:
+    - SessionRunnerModeTypeCommanded
+    - SessionRunnerModeTypeByPassed
+  models.SessionStateENUMType:
+    enum:
+    - IDLE
+    - READY
+    type: string
+    x-enum-varnames:
+    - SessionStateIdle
+    - SessionStateReady
+host: localhost:38281
+info:
+  contact: {}
+  description: REST API Wrapper Around PTY
+  title: rest-pty
+  version: v0.1.0-rc1
+paths:
+  /liveness/alive:
+    get:
+      description: Will return success to indicate REST API module is live
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: API liveness check
+      tags:
+      - util
+  /liveness/ready:
+    get:
+      description: Will return success to indicate REST API module is ready
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: API readiness check
+      tags:
+      - util
+  /v1/sessions:
+    get:
+      description: List the known sessions, with optional filtering and ordering
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Filter by sessions whose name is similar to this, case insensitive
+        in: query
+        name: name
+        type: string
+      - description: Number of leading entries to skip
+        in: query
+        name: offset
+        type: integer
+      - description: Max number of entries to return
+        in: query
+        name: limit
+        type: integer
+      - collectionFormat: multi
+        description: Filter by session driver type
+        in: query
+        items:
+          type: string
+        name: driver
+        type: array
+      - collectionFormat: multi
+        description: Filter by session state
+        in: query
+        items:
+          type: string
+        name: state
+        type: array
+      - description: Whether to order the results by session name
+        in: query
+        name: order_by_name
+        type: boolean
+      - description: Ordering direction, defaults to 'ASC'
+        enum:
+        - asc
+        - desc
+        - ASC
+        - DESC
+        in: query
+        name: order_dir
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.SessionListResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: List sessions
+      tags:
+      - management
+    post:
+      consumes:
+      - application/json
+      description: Define a new session
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session parameters
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/api.NewSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.SessionEntryResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Define a new session
+      tags:
+      - management
+  /v1/sessions/{sessionName}:
+    delete:
+      description: Delete a session. Only permitted on IDLE sessions.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Delete a session
+      tags:
+      - management
+    get:
+      description: Fetch one session by its name
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.SessionEntryResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Get one session
+      tags:
+      - management
+  /v1/sessions/{sessionName}/command:
+    put:
+      consumes:
+      - application/json
+      description: Change the command a session runs. Only permitted on IDLE sessions.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session command
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/models.SessionCommand'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session command
+      tags:
+      - management
+  /v1/sessions/{sessionName}/description:
+    put:
+      consumes:
+      - application/json
+      description: Change the description of a session
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session description
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateSessionDescriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session description
+      tags:
+      - management
+  /v1/sessions/{sessionName}/driver:
+    put:
+      consumes:
+      - application/json
+      description: Change the driver a session uses, along with its setup metadata.
+        Only permitted on IDLE sessions.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session driver parameters
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateSessionDriverRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session driver
+      tags:
+      - management
+  /v1/sessions/{sessionName}/io/input/commands:
+    post:
+      description: Submit user commands to session runner
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: User commands
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/api.UserCommandRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Submit user commands
+      tags:
+      - io
+  /v1/sessions/{sessionName}/io/output/chunk:
+    get:
+      description: |-
+        Read one chunk of data from a session's output ring buffer. As the buffer only
+        retains the most recent bytes, the requested offset may have aged out; in that
+        case the read is moved forward and "actual_offset" reports where the data starts.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: Read index position within the session output stream
+        in: query
+        name: offset
+        required: true
+        type: integer
+      - description: Max number of bytes to read
+        in: query
+        name: limit
+        required: true
+        type: integer
+      - description: Strip ANSI escape sequences from the returned data
+        in: query
+        name: strip_ansi
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.SessionOutputChunkResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Read one chunk of session output
+      tags:
+      - io
+  /v1/sessions/{sessionName}/io/output/tail:
+    get:
+      description: |-
+        Continuously stream a session's output via server-sent events (SSE). Each event
+        carries a base64 encoded chunk of bytes read from the output ring buffer. The
+        stream runs until the client disconnects.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: Read index position to start tailing from
+        in: query
+        name: offset
+        required: true
+        type: integer
+      - description: Milliseconds between buffer data availability checks (default
+          250)
+        in: query
+        name: poll_period_msec
+        type: integer
+      - description: Strip ANSI escape sequences from the streamed data
+        in: query
+        name: strip_ansi
+        type: boolean
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream
+          schema:
+            type: string
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Tail session output
+      tags:
+      - io
+  /v1/sessions/{sessionName}/name:
+    put:
+      description: Change the name of a session
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session name, can only contain alphanumeric characters and
+          -
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session name
+      tags:
+      - management
+  /v1/sessions/{sessionName}/output-buf-cap:
+    put:
+      description: Change the output buffer capacity of a session. Only permitted
+        on IDLE sessions.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New output buffer capacity
+        in: query
+        name: capacity
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session output buffer capacity
+      tags:
+      - management
+  /v1/sessions/{sessionName}/run-mode:
+    put:
+      description: Change the runner mode of a session. Only permitted on IDLE sessions.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session runner mode
+        enum:
+        - COMMANDED
+        - BY_PASSED
+        in: query
+        name: mode
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session runner mode
+      tags:
+      - management
+  /v1/sessions/{sessionName}/start:
+    post:
+      description: |-
+        Bring up a session runner for an existing session and start it. By default
+        the request to the session manager is non-blocking; set "block" to true to
+        wait for the start to complete.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: Whether to block until the start completes
+        in: query
+        name: block
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Start a session
+      tags:
+      - management
+  /v1/sessions/{sessionName}/stop:
+    post:
+      description: |-
+        Bring a session back to IDLE and unload its runner. By default the request
+        to the session manager is non-blocking; set "block" to true to wait for the
+        stop to complete.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: Whether to block until the stop completes
+        in: query
+        name: block
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Stop a session
+      tags:
+      - management
+swagger: "2.0"

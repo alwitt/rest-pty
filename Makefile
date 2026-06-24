@@ -44,6 +44,20 @@ test-package: .prepare ## Run all tests in a package. Set `PKG` as target packag
 mock: ## Define support mocks
 	@mockery
 
+.PHONY: doc
+doc: .prepare ## Generate the OpenAPI spec
+	@swag init -g main.go --parseDependency
+	@rm docs/docs.go
+
+.PHONY: ts-sdk
+ts-sdk: .prepare ## Generate typescript client SDK
+	@mkdir -vp tmp/sdk/ts-axios
+	@docker run --rm \
+	  --mount type=bind,source=$(BASE_DIR)/docs,target=/input,readonly \
+	  --mount type=bind,source=$(BASE_DIR)/tmp,target=/output \
+	  openapitools/openapi-generator-cli:latest-release \
+	    generate -i /input/swagger.yaml -g typescript-axios -o /output/sdk/ts-axios
+
 .PHONY: up
 up: .prepare ## Start docker compose development stack
 	docker compose -f docker/docker-compose.yml up -d

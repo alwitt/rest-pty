@@ -97,7 +97,7 @@ type UserCommandRequest struct {
 // SubmitUserCommandToSession godoc
 // @Summary Submit user commands
 // @Description Submit user commands to session runner
-// @tags io,input,structured
+// @tags io
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -365,7 +365,7 @@ type SessionOutputChunkResponse struct {
 // @Description Read one chunk of data from a session's output ring buffer. As the buffer only
 // @Description retains the most recent bytes, the requested offset may have aged out; in that
 // @Description case the read is moved forward and "actual_offset" reports where the data starts.
-// @tags io,output
+// @tags io
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
@@ -551,7 +551,7 @@ const tailStreamReadChunkSize = 4096
 // @Description Continuously stream a session's output via server-sent events (SSE). Each event
 // @Description carries a base64 encoded chunk of bytes read from the output ring buffer. The
 // @Description stream runs until the client disconnects.
-// @tags io,output
+// @tags io
 // @Produce text/event-stream
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
