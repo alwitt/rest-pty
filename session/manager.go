@@ -68,6 +68,35 @@ type Manager interface {
 	HandleStopSession(sessionName string, onComplete func(ctx context.Context, err error)) error
 
 	/*
+		ChangeOutputBufferCapacity change session output buffer capacity.
+
+		This can only be performed on IDLE sessions.
+
+			@param ctx context.Context - execution context
+			@param sessionName string - session to change
+			@param newCap int64 - new output buffer capacity
+			@param blocking bool - whether this is a blocking call
+	*/
+	ChangeOutputBufferCapacity(
+		ctx context.Context, sessionName string, newCap int64, blocking bool,
+	) error
+
+	/*
+		HandleChangeOutputBufferCapacity handler function called by worker task engine to process
+		`ChangeOutputBufferCapacity`
+
+		Only exposed for testing purposes. DO NOT DIRECTLY USE IN PRODUCTION.
+
+			@param sessionName string - session to change
+			@param newCap int64 - new output buffer capacity
+			@param onComplete func(ctx context.Context, err error) - callback function triggered
+			    upon completion
+	*/
+	HandleChangeOutputBufferCapacity(
+		sessionName string, newCap int64, onComplete func(ctx context.Context, err error),
+	) error
+
+	/*
 		HandleSessionIdleNotify callback function used by session runner to indicate the
 		managed session went IDLE before any shutdown command was given.
 
@@ -294,6 +323,24 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 	); err != nil {
 		return nil, goutils.NewRuntimeError(fmt.Sprintf(
 			"failed to register '%s' handler with worker", reflect.TypeOf(managerReqStopSession{}),
+		), err, true)
+	}
+
+	// Pending request to change a session's output buffer capacity
+	if err := instance.worker.AddToTaskExecutionMap(
+		reflect.TypeOf(managerReqChangeOutBufferCap{}),
+		func(taskParam interface{}) error {
+			newRequest, ok := taskParam.(managerReqChangeOutBufferCap)
+			if ok {
+				return instance.HandleChangeOutputBufferCapacity(
+					newRequest.SessionName, newRequest.NewCapacity, newRequest.OnComplete,
+				)
+			}
+			return fmt.Errorf("received unexpected call parameters: %s", reflect.TypeOf(taskParam))
+		},
+	); err != nil {
+		return nil, goutils.NewRuntimeError(fmt.Sprintf(
+			"failed to register '%s' handler with worker", reflect.TypeOf(managerReqChangeOutBufferCap{}),
 		), err, true)
 	}
 
@@ -800,6 +847,220 @@ func (r *managerImpl) HandleStopSession(
 
 	// Forget the runner
 	delete(r.activeRunners, sessionName)
+
+	// Notify original requester
+	onComplete(r.workingCtx, nil)
+	return nil
+}
+
+// ======================================================================================
+// Change Session Output Buffer Capacity
+
+// managerReqChangeOutBufferCap manager request `ChangeOutputBufferCapacity`
+type managerReqChangeOutBufferCap struct {
+	// SessionName the session to change
+	SessionName string
+	// NewCapacity new session output buffer capacity
+	NewCapacity int64
+	// OnComplete callback function triggered upon completion
+	OnComplete func(ctx context.Context, err error)
+}
+
+/*
+ChangeOutputBufferCapacity change session output buffer capacity.
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param sessionName string - session to change
+	@param newCap int64 - new output buffer capacity
+	@param blocking bool - whether this is a blocking call
+*/
+func (r *managerImpl) ChangeOutputBufferCapacity(
+	ctx context.Context, sessionName string, newCap int64, blocking bool,
+) error {
+	if !blocking {
+		if err := r.worker.Submit(ctx, managerReqChangeOutBufferCap{
+			SessionName: sessionName,
+			NewCapacity: newCap,
+			OnComplete:  r.logOnlyCompletion("change-out-buf-cap"),
+		}); err != nil {
+			return models.NewSessionManagerChangeOutputBufferCapError(
+				"failed to submit session "+sessionName+" change output buffer cap request", err, true,
+			)
+		}
+		return nil
+	}
+
+	type completion struct {
+		err error
+	}
+
+	respChan := make(chan completion, 1)
+	respCapture := func(_ context.Context, err error) {
+		respChan <- completion{err: err}
+	}
+
+	if err := r.worker.Submit(ctx, managerReqChangeOutBufferCap{
+		OnComplete: respCapture, SessionName: sessionName, NewCapacity: newCap,
+	}); err != nil {
+		return models.NewSessionManagerChangeOutputBufferCapError(
+			"failed to submit session "+sessionName+" change output buffer cap request", err, true,
+		)
+	}
+
+	// Wait for response
+	select {
+	case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
+			return models.NewSessionManagerChangeOutputBufferCapError(
+				"session "+sessionName+" change output buffer cap request context ended", err, true,
+			)
+		}
+
+	case resp, ok := <-respChan:
+		if !ok {
+			return models.NewSessionManagerChangeOutputBufferCapError(
+				"session "+sessionName+" request-buf-cap-change response channel closed", nil, true,
+			)
+		}
+		if resp.err != nil {
+			return resp.err
+		}
+	}
+
+	return nil
+}
+
+/*
+HandleChangeOutputBufferCapacity handler function called by worker task engine to
+process `ChangeOutputBufferCapacity`
+
+Only exposed for testing purposes. DO NOT DIRECTLY USE IN PRODUCTION.
+
+	@param sessionName string - session to change
+	@param newCap int64 - new output buffer capacity
+	@param onComplete func(ctx context.Context, err error) - callback function triggered
+	    upon completion
+*/
+func (r *managerImpl) HandleChangeOutputBufferCapacity(
+	sessionName string, newCap int64, onComplete func(ctx context.Context, err error),
+) error {
+	logTags := r.GetLogTagsForContext(r.workingCtx)
+
+	// Sanity check that the session exist
+	var sessionEntry models.Session
+	if dbErr := r.persistence.UseDatabaseInTransaction(
+		r.workingCtx, func(ctx context.Context, dbClient db.Database) error {
+			var err error
+			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
+			return err
+		},
+	); dbErr != nil {
+		exitErr := models.NewSessionManagerChangeOutputBufferCapError(
+			"failed to verify session "+sessionName+" is valid", dbErr, true,
+		)
+		log.
+			WithError(exitErr).
+			WithFields(logTags).
+			Error("Change session " + sessionName + " output buffer capacity failed")
+		onComplete(r.workingCtx, exitErr)
+		return exitErr
+	}
+
+	// There can't be an existing runner
+	if _, foundExistingRunner := r.activeRunners[sessionEntry.Name]; foundExistingRunner {
+		// Wrap a ConsistencyError so the API layer can surface this as a 409 Conflict: the change
+		// is only permitted while the session is IDLE with no active runner.
+		exitErr := models.NewSessionManagerChangeOutputBufferCapError(
+			"session "+sessionEntry.Name+" currently active",
+			goutils.NewConsistencyError(
+				"session "+sessionEntry.Name+" output buffer capacity can only change while IDLE",
+				nil, true,
+			),
+			true,
+		)
+		log.
+			WithError(exitErr).
+			WithFields(logTags).
+			Error("Change session " + sessionName + " output buffer capacity failed")
+		onComplete(r.workingCtx, exitErr)
+		return exitErr
+	}
+
+	forceSessionToIdle := func() error {
+		// Force the session back to IDLE
+		dbErr := r.persistence.UseDatabaseInTransaction(
+			r.workingCtx, func(ctx context.Context, dbClient db.Database) error {
+				return dbClient.MarkSessionIdle(ctx, sessionEntry.Name)
+			},
+		)
+		if dbErr != nil {
+			exitErr := models.NewSessionManagerChangeOutputBufferCapError(
+				"failed to move session "+sessionName+" back to IDLE", dbErr, true,
+			)
+			return exitErr
+		}
+		return nil
+	}
+
+	// Session needs to be in IDLE state
+	if sessionEntry.State != models.SessionStateIdle {
+		log.WithFields(logTags).Warnf("Session %s is READY with no associated runner", sessionName)
+		// Force the session back to IDLE
+		if err := forceSessionToIdle(); err != nil {
+			log.
+				WithError(err).
+				WithFields(logTags).
+				Error("Change session " + sessionName + " output buffer capacity failed")
+			onComplete(r.workingCtx, err)
+			return err
+		}
+	}
+
+	// This updates two distinct storage systems (the REDIS buffer and the DB record), so some
+	// sync skew is unavoidable. Delete the buffer FIRST, then update the record. If the delete
+	// succeeds but the record update fails, the call can simply be retried: DeleteRingBuffer is a
+	// REDIS DEL, which is idempotent (deleting an already-absent buffer is a no-op, not an error),
+	// so the retry harmlessly re-runs the delete and re-attempts the record update. Do not flip
+	// this ordering: updating the record first would leave the buffer reflecting a capacity the
+	// record no longer advertises if the delete then failed.
+	//
+	// Until the record update commits, the record still shows the old capacity while the buffer is
+	// gone. This only runs on IDLE sessions with no active runner, so nothing reads the buffer in
+	// that window, and it is lazily recreated at the record's capacity on the next session start.
+
+	// Delete the existing output buffer
+	if err := r.redisClient.DeleteRingBuffer(
+		r.workingCtx, BuildSessionOutputBufferName(sessionEntry.ID),
+	); err != nil {
+		exitErr := models.NewSessionManagerChangeOutputBufferCapError(
+			"failed to delete session "+sessionName+" existing output buffer", err, true,
+		)
+		log.
+			WithError(exitErr).
+			WithFields(logTags).
+			Error("Change session " + sessionName + " output buffer capacity failed")
+		onComplete(r.workingCtx, exitErr)
+		return exitErr
+	}
+
+	// Change the session output buffer capacity
+	if dbErr := r.persistence.UseDatabaseInTransaction(
+		r.workingCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, newCap)
+		},
+	); dbErr != nil {
+		exitErr := models.NewSessionManagerChangeOutputBufferCapError(
+			"failed to change session "+sessionName+" output buffer capacity", dbErr, true,
+		)
+		log.
+			WithError(exitErr).
+			WithFields(logTags).
+			Error("Change session " + sessionName + " output buffer capacity failed")
+		onComplete(r.workingCtx, exitErr)
+		return exitErr
+	}
 
 	// Notify original requester
 	onComplete(r.workingCtx, nil)

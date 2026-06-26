@@ -498,16 +498,15 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 
 	route := "/v1/sessions/{sessionName}/output-buf-cap"
 
-	// Case 0: update capacity successfully
-	t.Run("success", func(t *testing.T) {
+	// Case 0: update capacity successfully, defaulting to non-blocking
+	t.Run("success non-blocking default", func(t *testing.T) {
 		assert := assert.New(t)
 		testMocks := newAPIHandlerTestMocks(t)
 		uut := buildSessionManagerHandler(assert, testMocks)
 
-		testMocks.passthroughTransaction()
-		testMocks.database.
+		testMocks.manager.
 			EXPECT().
-			UpdateSessionOutputBufCapacity(mock.Anything, "test-session", int64(32768)).
+			ChangeOutputBufferCapacity(mock.Anything, "test-session", int64(32768), false).
 			Return(nil).
 			Once()
 
@@ -524,7 +523,32 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		assert.Equal(http.StatusOK, respRecorder.Code)
 	})
 
-	// Case 1: missing capacity query param is rejected
+	// Case 1: blocking flag is parsed and forwarded to the manager
+	t.Run("success blocking", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			ChangeOutputBufferCapacity(mock.Anything, "test-session", int64(32768), true).
+			Return(nil).
+			Once()
+
+		req, err := http.NewRequest(
+			"PUT", "/v1/sessions/test-session/output-buf-cap?capacity=32768&block=true", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.UpdateSessionOutputBufCapacity))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 2: missing capacity query param is rejected
 	t.Run("missing capacity", func(t *testing.T) {
 		assert := assert.New(t)
 		testMocks := newAPIHandlerTestMocks(t)
@@ -543,7 +567,7 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		assert.Equal(http.StatusBadRequest, respRecorder.Code)
 	})
 
-	// Case 2: capacity below the minimum is rejected
+	// Case 3: capacity below the minimum is rejected
 	t.Run("capacity below minimum", func(t *testing.T) {
 		assert := assert.New(t)
 		testMocks := newAPIHandlerTestMocks(t)
@@ -562,16 +586,34 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		assert.Equal(http.StatusBadRequest, respRecorder.Code)
 	})
 
-	// Case 3: unknown session yields 404
+	// Case 4: non-boolean block query param is rejected before reaching the manager
+	t.Run("invalid block param", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"PUT", "/v1/sessions/test-session/output-buf-cap?capacity=32768&block=maybe", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.UpdateSessionOutputBufCapacity))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 5: unknown session yields 404
 	t.Run("unknown session", func(t *testing.T) {
 		assert := assert.New(t)
 		testMocks := newAPIHandlerTestMocks(t)
 		uut := buildSessionManagerHandler(assert, testMocks)
 
-		testMocks.passthroughTransaction()
-		testMocks.database.
+		testMocks.manager.
 			EXPECT().
-			UpdateSessionOutputBufCapacity(mock.Anything, "missing", int64(32768)).
+			ChangeOutputBufferCapacity(mock.Anything, "missing", int64(32768), false).
 			Return(goutils.NewNotFoundError("unknown", nil, false)).
 			Once()
 
@@ -588,16 +630,15 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		assert.Equal(http.StatusNotFound, respRecorder.Code)
 	})
 
-	// Case 4: session in wrong state yields 409
+	// Case 6: session in wrong state yields 409
 	t.Run("consistency error", func(t *testing.T) {
 		assert := assert.New(t)
 		testMocks := newAPIHandlerTestMocks(t)
 		uut := buildSessionManagerHandler(assert, testMocks)
 
-		testMocks.passthroughTransaction()
-		testMocks.database.
+		testMocks.manager.
 			EXPECT().
-			UpdateSessionOutputBufCapacity(mock.Anything, "test-session", int64(32768)).
+			ChangeOutputBufferCapacity(mock.Anything, "test-session", int64(32768), false).
 			Return(goutils.NewConsistencyError("not idle", nil, false)).
 			Once()
 
@@ -612,6 +653,61 @@ func TestSessionManagerHandlerUpdateSessionOutputBufCapacity(t *testing.T) {
 		router.ServeHTTP(respRecorder, req)
 
 		assert.Equal(http.StatusConflict, respRecorder.Code)
+	})
+
+	// Case 7: the manager's active-session error (a ConsistencyError wrapped in a
+	// SessionManagerChangeOutputBufferCapError) is unwrapped and likewise mapped to 409
+	t.Run("active session wraps consistency", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			ChangeOutputBufferCapacity(mock.Anything, "test-session", int64(32768), false).
+			Return(models.NewSessionManagerChangeOutputBufferCapError(
+				"session test-session currently active",
+				goutils.NewConsistencyError("only while IDLE", nil, false),
+				false,
+			)).
+			Once()
+
+		req, err := http.NewRequest(
+			"PUT", "/v1/sessions/test-session/output-buf-cap?capacity=32768", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.UpdateSessionOutputBufCapacity))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusConflict, respRecorder.Code)
+	})
+
+	// Case 8: generic manager failure surfaces as 500
+	t.Run("manager failure", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.manager.
+			EXPECT().
+			ChangeOutputBufferCapacity(mock.Anything, "test-session", int64(32768), false).
+			Return(models.NewSessionManagerChangeOutputBufferCapError("boom", nil, false)).
+			Once()
+
+		req, err := http.NewRequest(
+			"PUT", "/v1/sessions/test-session/output-buf-cap?capacity=32768", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.UpdateSessionOutputBufCapacity))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
 	})
 }
 

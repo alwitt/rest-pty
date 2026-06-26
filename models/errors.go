@@ -160,6 +160,24 @@ func NewSessionManagerStopAllSessionsError(
 	return SessionManagerStopAllSessionsError{BaseError: base}
 }
 
+// SessionManagerChangeOutputBufferCapError error session manager change session output
+// buffer capacity
+type SessionManagerChangeOutputBufferCapError struct{ goutils.BaseError }
+
+// NewSessionManagerChangeOutputBufferCapError builds a
+// SessionManagerChangeOutputBufferCapError, optionally capturing the call stack.
+func NewSessionManagerChangeOutputBufferCapError(
+	message string, core error, getCallStack bool,
+) SessionManagerChangeOutputBufferCapError {
+	base := goutils.BaseError{
+		Name: "SessionManagerChangeOutputBufferCapError", Message: message, Core: core,
+	}
+	if getCallStack {
+		base.Stack = goutils.GetCallStack(1)
+	}
+	return SessionManagerChangeOutputBufferCapError{BaseError: base}
+}
+
 // ======================================================================================
 // Application Lifecycle Errors
 

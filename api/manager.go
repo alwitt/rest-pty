@@ -503,11 +503,14 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 // UpdateSessionOutputBufCapacity godoc
 // @Summary Change session output buffer capacity
 // @Description Change the output buffer capacity of a session. Only permitted on IDLE sessions.
+// @Description The change is performed through the session manager; by default the request is
+// @Description non-blocking, set "block" to true to wait for the change to complete.
 // @tags management
 // @Produce json
 // @Param X-Request-ID header string false "Request ID"
 // @Param sessionName path string true "Session name"
 // @Param capacity query int true "New output buffer capacity"
+// @Param block query bool false "Whether to block until the change completes"
 // @Success 200 {object} goutils.RestAPIBaseResponse "success"
 // @Failure 400 {object} goutils.RestAPIBaseResponse "error"
 // @Failure 403 {object} goutils.RestAPIBaseResponse "error"
@@ -554,30 +557,42 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 		return
 	}
 
-	// Apply the new capacity
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionOutputBufCapacity(ctx, sessionName, newCap)
-		},
-	); dbErr != nil {
+	// Parse the optional blocking flag
+	blocking := false
+	if raw := r.URL.Query().Get("block"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Invalid 'block' query parameter"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		blocking = parsed
+	}
+
+	// Apply the new capacity through the session manager
+	if err := h.manager.ChangeOutputBufferCapacity(
+		r.Context(), sessionName, newCap, blocking,
+	); err != nil {
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
-		case errors.As(dbErr, &unknownSession):
+		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(logTags).Error(msg)
 			respCode = http.StatusNotFound
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-		case errors.As(dbErr, &consistency):
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		case errors.As(err, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(logTags).Error(msg)
 			respCode = http.StatusConflict
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		default:
 			msg := "Failed to update output buffer capacity for session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(logTags).Error(msg)
 			respCode = http.StatusInternalServerError
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}
 		return
 	}

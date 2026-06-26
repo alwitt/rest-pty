@@ -37,6 +37,138 @@ func (_m *Manager) EXPECT() *Manager_Expecter {
 	return &Manager_Expecter{mock: &_m.Mock}
 }
 
+// ChangeOutputBufferCapacity provides a mock function for the type Manager
+func (_mock *Manager) ChangeOutputBufferCapacity(ctx context.Context, sessionName string, newCap int64, blocking bool) error {
+	ret := _mock.Called(ctx, sessionName, newCap, blocking)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ChangeOutputBufferCapacity")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int64, bool) error); ok {
+		r0 = returnFunc(ctx, sessionName, newCap, blocking)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Manager_ChangeOutputBufferCapacity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ChangeOutputBufferCapacity'
+type Manager_ChangeOutputBufferCapacity_Call struct {
+	*mock.Call
+}
+
+// ChangeOutputBufferCapacity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionName string
+//   - newCap int64
+//   - blocking bool
+func (_e *Manager_Expecter) ChangeOutputBufferCapacity(ctx interface{}, sessionName interface{}, newCap interface{}, blocking interface{}) *Manager_ChangeOutputBufferCapacity_Call {
+	return &Manager_ChangeOutputBufferCapacity_Call{Call: _e.mock.On("ChangeOutputBufferCapacity", ctx, sessionName, newCap, blocking)}
+}
+
+func (_c *Manager_ChangeOutputBufferCapacity_Call) Run(run func(ctx context.Context, sessionName string, newCap int64, blocking bool)) *Manager_ChangeOutputBufferCapacity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int64
+		if args[2] != nil {
+			arg2 = args[2].(int64)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *Manager_ChangeOutputBufferCapacity_Call) Return(err error) *Manager_ChangeOutputBufferCapacity_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Manager_ChangeOutputBufferCapacity_Call) RunAndReturn(run func(ctx context.Context, sessionName string, newCap int64, blocking bool) error) *Manager_ChangeOutputBufferCapacity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// HandleChangeOutputBufferCapacity provides a mock function for the type Manager
+func (_mock *Manager) HandleChangeOutputBufferCapacity(sessionName string, newCap int64, onComplete func(ctx context.Context, err error)) error {
+	ret := _mock.Called(sessionName, newCap, onComplete)
+
+	if len(ret) == 0 {
+		panic("no return value specified for HandleChangeOutputBufferCapacity")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(string, int64, func(ctx context.Context, err error)) error); ok {
+		r0 = returnFunc(sessionName, newCap, onComplete)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Manager_HandleChangeOutputBufferCapacity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HandleChangeOutputBufferCapacity'
+type Manager_HandleChangeOutputBufferCapacity_Call struct {
+	*mock.Call
+}
+
+// HandleChangeOutputBufferCapacity is a helper method to define mock.On call
+//   - sessionName string
+//   - newCap int64
+//   - onComplete func(ctx context.Context, err error)
+func (_e *Manager_Expecter) HandleChangeOutputBufferCapacity(sessionName interface{}, newCap interface{}, onComplete interface{}) *Manager_HandleChangeOutputBufferCapacity_Call {
+	return &Manager_HandleChangeOutputBufferCapacity_Call{Call: _e.mock.On("HandleChangeOutputBufferCapacity", sessionName, newCap, onComplete)}
+}
+
+func (_c *Manager_HandleChangeOutputBufferCapacity_Call) Run(run func(sessionName string, newCap int64, onComplete func(ctx context.Context, err error))) *Manager_HandleChangeOutputBufferCapacity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 int64
+		if args[1] != nil {
+			arg1 = args[1].(int64)
+		}
+		var arg2 func(ctx context.Context, err error)
+		if args[2] != nil {
+			arg2 = args[2].(func(ctx context.Context, err error))
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *Manager_HandleChangeOutputBufferCapacity_Call) Return(err error) *Manager_HandleChangeOutputBufferCapacity_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Manager_HandleChangeOutputBufferCapacity_Call) RunAndReturn(run func(sessionName string, newCap int64, onComplete func(ctx context.Context, err error)) error) *Manager_HandleChangeOutputBufferCapacity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // HandleSessionIPCProcessError provides a mock function for the type Manager
 func (_mock *Manager) HandleSessionIPCProcessError(sessionName string, sessionErr error) {
 	_mock.Called(sessionName, sessionErr)

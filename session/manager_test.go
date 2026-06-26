@@ -99,15 +99,15 @@ func (m *managerTestMocks) passthroughTransaction() {
 
 /*
 buildManager construct a ready-to-use manager backed by the mocks, wiring the construction-time
-expectations (worker handler registration). The three request handlers (start, stop, stop-all) get
-registered at construction.
+expectations (worker handler registration). The four request handlers (start, stop,
+change-output-buffer-cap, stop-all) get registered at construction.
 */
 func (m *managerTestMocks) buildManager(
 	ctx context.Context, t *testing.T, instanceName string,
 ) session.Manager {
 	assert := assert.New(t)
 
-	m.worker.EXPECT().AddToTaskExecutionMap(mock.Anything, mock.Anything).Return(nil).Times(3)
+	m.worker.EXPECT().AddToTaskExecutionMap(mock.Anything, mock.Anything).Return(nil).Times(4)
 
 	uut, err := session.NewSessionManager(ctx, m.constructParams(instanceName))
 	assert.Nil(err)
@@ -252,11 +252,11 @@ func TestSessionManagerConstruct(t *testing.T) {
 		utCtx := context.Background()
 		m := newManagerTestMocks(t)
 
-		// All three request handlers (start, stop, stop-all) get registered
+		// All four request handlers (start, stop, change-output-buffer-cap, stop-all) get registered
 		m.worker.EXPECT().
 			AddToTaskExecutionMap(mock.Anything, mock.Anything).
 			Return(nil).
-			Times(3)
+			Times(4)
 
 		params := m.constructParams(instanceName)
 
@@ -952,6 +952,242 @@ func TestSessionManagerHandleStopSession(t *testing.T) {
 	})
 }
 
+// TestSessionManagerHandleChangeOutputBufferCapacity verifies the behavior of
+// `HandleChangeOutputBufferCapacity`.
+func TestSessionManagerHandleChangeOutputBufferCapacity(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	const instanceName = "test-manager-01"
+	const sessionName = "test-session-01"
+	const newCap int64 = 65536
+
+	// buildSession assemble a session in the requested state
+	buildSession := func(state models.SessionStateENUMType) models.Session {
+		return models.Session{
+			ID:                   "01HSESSIONIDABCDEF0123456",
+			Name:                 sessionName,
+			Command:              models.SessionCommand{Command: "/bin/bash"},
+			State:                state,
+			DriverType:           models.SessionDriverTypePTY,
+			OutputBufferCapacity: 16384,
+			RunnerMode:           models.SessionRunnerModeTypeCommanded,
+		}
+	}
+
+	// Case 0: an IDLE session has its buffer deleted and capacity record updated
+	t.Run("success", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateIdle), nil)
+		// Buffer is deleted FIRST, then the record updated
+		m.redisClient.EXPECT().DeleteRingBuffer(mock.Anything, mock.Anything).Return(nil)
+		m.database.EXPECT().
+			UpdateSessionOutputBufCapacity(mock.Anything, sessionName, newCap).
+			Return(nil)
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.Nil(err)
+		assert.True(called)
+		assert.Nil(gotErr)
+	})
+
+	// Case 1: loading the session from persistence fails
+	t.Run("session load failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(models.Session{}, goutils.NewNotFoundError("no such session", nil, false))
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.NotNil(err)
+		assert.True(called)
+		assert.NotNil(gotErr)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 2: the session currently has an active runner; the change is rejected
+	t.Run("runner active", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+		m.loadRunner(t, uut, sessionName)
+
+		// The active-runner guard bails before touching the buffer or capacity record
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateReady), nil)
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.NotNil(err)
+		assert.True(called)
+		assert.NotNil(gotErr)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+		// The error wraps a ConsistencyError so the API can map it to a 409 Conflict
+		var consistencyErr goutils.ConsistencyError
+		assert.True(errors.As(err, &consistencyErr))
+	})
+
+	// Case 3: a non-IDLE session with no runner is forced back to IDLE before the change proceeds
+	t.Run("non-idle session forced to idle", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateReady), nil)
+		// The stray READY session is reset to IDLE first
+		m.database.EXPECT().MarkSessionIdle(mock.Anything, sessionName).Return(nil)
+		m.redisClient.EXPECT().DeleteRingBuffer(mock.Anything, mock.Anything).Return(nil)
+		m.database.EXPECT().
+			UpdateSessionOutputBufCapacity(mock.Anything, sessionName, newCap).
+			Return(nil)
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.Nil(err)
+		assert.True(called)
+		assert.Nil(gotErr)
+	})
+
+	// Case 4: forcing the non-IDLE session back to IDLE fails
+	t.Run("force to idle failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateReady), nil)
+		m.database.EXPECT().
+			MarkSessionIdle(mock.Anything, sessionName).
+			Return(models.NewPersistenceError("mark boom", nil, false))
+		// Neither the buffer nor the capacity record is touched after the failed reset
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.NotNil(err)
+		assert.True(called)
+		assert.NotNil(gotErr)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 5: deleting the existing output buffer fails; the capacity record is left untouched
+	t.Run("buffer delete failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateIdle), nil)
+		m.redisClient.EXPECT().
+			DeleteRingBuffer(mock.Anything, mock.Anything).
+			Return(fmt.Errorf("delete boom"))
+		// UpdateSessionOutputBufCapacity is intentionally NOT expected: delete runs first and bails
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.NotNil(err)
+		assert.True(called)
+		assert.NotNil(gotErr)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 6: the buffer is deleted but recording the new capacity fails
+	t.Run("capacity update failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.startManager(utCtx, t, instanceName)
+
+		m.database.EXPECT().
+			GetSessionByName(mock.Anything, sessionName).
+			Return(buildSession(models.SessionStateIdle), nil)
+		m.redisClient.EXPECT().DeleteRingBuffer(mock.Anything, mock.Anything).Return(nil)
+		m.database.EXPECT().
+			UpdateSessionOutputBufCapacity(mock.Anything, sessionName, newCap).
+			Return(models.NewPersistenceError("update boom", nil, false))
+
+		var gotErr error
+		called := false
+		err := uut.HandleChangeOutputBufferCapacity(
+			sessionName, newCap, func(_ context.Context, e error) {
+				called = true
+				gotErr = e
+			},
+		)
+		assert.NotNil(err)
+		assert.True(called)
+		assert.NotNil(gotErr)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+}
+
 // TestSessionManagerHandleStopAllSession verifies the behavior of `HandleStopAllSessions`.
 func TestSessionManagerHandleStopAllSession(t *testing.T) {
 	log.SetLevel(log.DebugLevel)
@@ -1313,6 +1549,127 @@ func TestSessionManagerStopSession(t *testing.T) {
 		assert.NotNil(err)
 		var stopErr models.SessionManagerStopSessionError
 		assert.True(errors.As(err, &stopErr))
+	})
+}
+
+// TestSessionManagerChangeOutputBufferCapacity verifies the behavior of
+// `ChangeOutputBufferCapacity` (request submission).
+func TestSessionManagerChangeOutputBufferCapacity(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	const instanceName = "test-manager-01"
+	const sessionName = "test-session-01"
+	const newCap int64 = 65536
+
+	// Case 0: non-blocking submission succeeds
+	t.Run("non-blocking success", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		m.worker.EXPECT().Submit(mock.Anything, mock.Anything).Return(nil)
+
+		assert.Nil(uut.ChangeOutputBufferCapacity(utCtx, sessionName, newCap, false))
+	})
+
+	// Case 1: non-blocking submission fails to enqueue
+	t.Run("non-blocking submit failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		m.worker.EXPECT().
+			Submit(mock.Anything, mock.Anything).
+			Return(fmt.Errorf("submit boom"))
+
+		err := uut.ChangeOutputBufferCapacity(utCtx, sessionName, newCap, false)
+		assert.NotNil(err)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 2: blocking submission succeeds and the worker reports success
+	t.Run("blocking success", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		// Simulate the worker running the request and reporting success
+		m.worker.EXPECT().
+			Submit(mock.Anything, mock.Anything).
+			Run(func(_ context.Context, taskParam interface{}) {
+				invokeOnComplete(taskParam, nil)
+			}).
+			Return(nil)
+
+		assert.Nil(uut.ChangeOutputBufferCapacity(utCtx, sessionName, newCap, true))
+	})
+
+	// Case 3: blocking submission succeeds but the worker reports a failure
+	t.Run("blocking handler failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		handlerErr := models.NewSessionManagerChangeOutputBufferCapError("handler boom", nil, false)
+		m.worker.EXPECT().
+			Submit(mock.Anything, mock.Anything).
+			Run(func(_ context.Context, taskParam interface{}) {
+				invokeOnComplete(taskParam, handlerErr)
+			}).
+			Return(nil)
+
+		err := uut.ChangeOutputBufferCapacity(utCtx, sessionName, newCap, true)
+		assert.NotNil(err)
+		// The handler error is surfaced verbatim to the caller
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 4: blocking submission fails to enqueue
+	t.Run("blocking submit failure", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		m.worker.EXPECT().
+			Submit(mock.Anything, mock.Anything).
+			Return(fmt.Errorf("submit boom"))
+
+		err := uut.ChangeOutputBufferCapacity(utCtx, sessionName, newCap, true)
+		assert.NotNil(err)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
+	})
+
+	// Case 5: blocking submission succeeds but the caller context ends before a response
+	t.Run("blocking context ended", func(t *testing.T) {
+		assert := assert.New(t)
+		utCtx := context.Background()
+		m := newManagerTestMocks(t)
+
+		uut := m.buildManager(utCtx, t, instanceName)
+
+		// The worker accepts the request but never reports back
+		m.worker.EXPECT().Submit(mock.Anything, mock.Anything).Return(nil)
+
+		reqCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := uut.ChangeOutputBufferCapacity(reqCtx, sessionName, newCap, true)
+		assert.NotNil(err)
+		var changeErr models.SessionManagerChangeOutputBufferCapError
+		assert.True(errors.As(err, &changeErr))
 	})
 }
 
