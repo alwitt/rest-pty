@@ -110,6 +110,8 @@ func validateSessionInputCmdType(fl validator.FieldLevel) bool {
 	case SessionInputCommandTypeCTRL:
 		fallthrough
 	case SessionInputCommandTypeCR:
+		fallthrough
+	case SessionInputCommandTypeRaw:
 		return true
 	}
 	return false

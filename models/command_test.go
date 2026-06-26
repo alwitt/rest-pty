@@ -1,6 +1,7 @@
 package models_test
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/alwitt/rest-pty/models"
@@ -86,6 +87,42 @@ func TestSessionInputCommandValidate(t *testing.T) {
 			false,
 		},
 
+		// RAW: content required, valid Base64
+		{
+			"raw-valid",
+			// "ls -la\r" -> Base64
+			models.SessionInputCommand{
+				Type: models.SessionInputCommandTypeRaw, Content: ptr("bHMgLWxhDQ=="),
+			},
+			false,
+		},
+		{
+			"raw-escape-sequence",
+			// ESC [ A (up arrow) -> Base64
+			models.SessionInputCommand{
+				Type: models.SessionInputCommandTypeRaw, Content: ptr("G1tB"),
+			},
+			false,
+		},
+		{
+			"raw-empty-content",
+			// Empty string is valid Base64 decoding to a zero-length slice.
+			models.SessionInputCommand{Type: models.SessionInputCommandTypeRaw, Content: ptr("")},
+			false,
+		},
+		{
+			"raw-nil-content",
+			models.SessionInputCommand{Type: models.SessionInputCommandTypeRaw, Content: nil},
+			true,
+		},
+		{
+			"raw-invalid-base64",
+			models.SessionInputCommand{
+				Type: models.SessionInputCommandTypeRaw, Content: ptr("not!base64!"),
+			},
+			true,
+		},
+
 		// Bad / missing type
 		{
 			"unknown-type",
@@ -143,4 +180,41 @@ func TestSessionInputCommandValidate(t *testing.T) {
 			"case %q: expected array validation to fail on the invalid entry", tc.name,
 		)
 	}
+}
+
+func TestBuildStdinInputFromCommands(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	ptr := func(s string) *string { return &s }
+
+	// "ls -la" Base64-encoded for the RAW command.
+	rawLsLa := base64.StdEncoding.EncodeToString([]byte("ls -la"))
+
+	// A sequence interleaving every command type: type "echo hi", press ENTER,
+	// CTRL+C, then a RAW "ls -la".
+	cmds := []models.SessionInputCommand{
+		{Type: models.SessionInputCommandTypeText, Content: ptr("echo hi")},
+		{Type: models.SessionInputCommandTypeCR},
+		{Type: models.SessionInputCommandTypeCTRL, Content: ptr("C")},
+		{Type: models.SessionInputCommandTypeRaw, Content: ptr(rawLsLa)},
+	}
+
+	out, err := models.BuildStdinInputFromCommands(cmds)
+	require.NoError(err)
+	assert.Equal([]byte("echo hi\r\x03ls -la"), out)
+
+	// An empty RAW content contributes no bytes.
+	out, err = models.BuildStdinInputFromCommands([]models.SessionInputCommand{
+		{Type: models.SessionInputCommandTypeRaw, Content: ptr("")},
+	})
+	require.NoError(err)
+	assert.Empty(out)
+
+	// Invalid Base64 in a RAW command is rejected with the offending index.
+	_, err = models.BuildStdinInputFromCommands([]models.SessionInputCommand{
+		{Type: models.SessionInputCommandTypeText, Content: ptr("hi")},
+		{Type: models.SessionInputCommandTypeRaw, Content: ptr("not!base64!")},
+	})
+	assert.Error(err)
 }

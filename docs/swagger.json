@@ -917,7 +917,7 @@
         },
         "/v1/sessions/{sessionName}/output-buf-cap": {
             "put": {
-                "description": "Change the output buffer capacity of a session. Only permitted on IDLE sessions.",
+                "description": "Change the output buffer capacity of a session. Only permitted on IDLE sessions.\nThe change is performed through the session manager; by default the request is\nnon-blocking, set \"block\" to true to wait for the change to complete.",
                 "produces": [
                     "application/json"
                 ],
@@ -945,6 +945,12 @@
                         "name": "capacity",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether to block until the change completes",
+                        "name": "block",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1500,7 +1506,7 @@
             ],
             "properties": {
                 "content": {
-                    "description": "Content command content if needed\n\n\t\tFor `TEXT` type, the content is the text to write to STDIN.\n\n\t\tFor `CTRL` type, the content is the control character (e.g. C for CTRL+C, etc.).\n\n\t\tFor `ENTRY` type, the content is ignored",
+                    "description": "Content command content if needed\n\n\t\tFor `TEXT` type, the content is the text to write to STDIN.\n\n\t\tFor `CTRL` type, the content is the control character (e.g. C for CTRL+C, etc.).\n\n\t\tFor `ENTRY` type, the content is ignored\n\n\t\tFor `RAW` type, the content is the raw input byte slice (direct capture of\n\t\tkeyboard presses, including ANSI characters, escape sequences, and control\n\t\tcharacters) in Base64 encoding.",
                     "type": "string"
                 },
                 "type": {
@@ -1518,12 +1524,14 @@
             "enum": [
                 "TEXT",
                 "CTRL",
-                "ENTER"
+                "ENTER",
+                "RAW"
             ],
             "x-enum-varnames": [
                 "SessionInputCommandTypeText",
                 "SessionInputCommandTypeCTRL",
-                "SessionInputCommandTypeCR"
+                "SessionInputCommandTypeCR",
+                "SessionInputCommandTypeRaw"
             ]
         },
         "models.SessionRunnerModeTypeENUMType": {

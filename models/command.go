@@ -2,6 +2,7 @@ package models
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/alwitt/goutils"
@@ -19,6 +20,11 @@ const (
 
 	// SessionInputCommandTypeCR carriage return input to STDIN
 	SessionInputCommandTypeCR SessionInputCommandTypeENUMType = "ENTER"
+
+	// SessionInputCommandTypeRaw raw input data to STDIN. The content is a
+	// Base64-encoded byte slice capturing keyboard presses verbatim, including
+	// ANSI characters, escape sequences, and control characters.
+	SessionInputCommandTypeRaw SessionInputCommandTypeENUMType = "RAW"
 )
 
 // SessionInputCommand session input command object
@@ -34,6 +40,10 @@ type SessionInputCommand struct {
 		For `CTRL` type, the content is the control character (e.g. C for CTRL+C, etc.).
 
 		For `ENTRY` type, the content is ignored
+
+		For `RAW` type, the content is the raw input byte slice (direct capture of
+		keyboard presses, including ANSI characters, escape sequences, and control
+		characters) in Base64 encoding.
 	*/
 	Content *string `json:"content,omitempty"`
 }
@@ -76,6 +86,18 @@ func (c SessionInputCommand) IsValid() error {
 	case SessionInputCommandTypeCR:
 		// Content is ignored.
 
+	case SessionInputCommandTypeRaw:
+		// Content is a Base64-encoded byte slice; an empty string decodes to a
+		// zero-length slice (a no-op), but missing or malformed Content is not.
+		if c.Content == nil {
+			return goutils.NewValidationError("RAW command requires content", nil, true)
+		}
+		if _, err := base64.StdEncoding.DecodeString(*c.Content); err != nil {
+			return goutils.NewValidationError(
+				"RAW content is not valid Base64", err, true,
+			)
+		}
+
 	default:
 		return goutils.NewValidationError(
 			fmt.Sprintf("unsupported command type %q", c.Type), nil, true,
@@ -114,6 +136,17 @@ func BuildStdinInputFromCommands(cmds []SessionInputCommand) ([]byte, error) {
 		case SessionInputCommandTypeCR:
 			// Content is ignored; ENTER is a carriage return.
 			buf.WriteByte(asciiCR)
+
+		case SessionInputCommandTypeRaw:
+			// Content is Base64-encoded raw bytes written to STDIN verbatim.
+			// IsValid above guarantees the content decodes cleanly.
+			raw, err := base64.StdEncoding.DecodeString(*cmd.Content)
+			if err != nil {
+				return nil, goutils.NewBadInputError(
+					fmt.Sprintf("bad command %d in sequence", idx), err, true,
+				)
+			}
+			buf.Write(raw)
 		}
 	}
 

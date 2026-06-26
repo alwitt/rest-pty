@@ -202,7 +202,9 @@ definitions:
         description: "Content command content if needed\n\n\t\tFor `TEXT` type, the
           content is the text to write to STDIN.\n\n\t\tFor `CTRL` type, the content
           is the control character (e.g. C for CTRL+C, etc.).\n\n\t\tFor `ENTRY` type,
-          the content is ignored"
+          the content is ignored\n\n\t\tFor `RAW` type, the content is the raw input
+          byte slice (direct capture of\n\t\tkeyboard presses, including ANSI characters,
+          escape sequences, and control\n\t\tcharacters) in Base64 encoding."
         type: string
       type:
         allOf:
@@ -216,11 +218,13 @@ definitions:
     - TEXT
     - CTRL
     - ENTER
+    - RAW
     type: string
     x-enum-varnames:
     - SessionInputCommandTypeText
     - SessionInputCommandTypeCTRL
     - SessionInputCommandTypeCR
+    - SessionInputCommandTypeRaw
   models.SessionRunnerModeTypeENUMType:
     enum:
     - COMMANDED
@@ -857,8 +861,10 @@ paths:
       - management
   /v1/sessions/{sessionName}/output-buf-cap:
     put:
-      description: Change the output buffer capacity of a session. Only permitted
-        on IDLE sessions.
+      description: |-
+        Change the output buffer capacity of a session. Only permitted on IDLE sessions.
+        The change is performed through the session manager; by default the request is
+        non-blocking, set "block" to true to wait for the change to complete.
       parameters:
       - description: Request ID
         in: header
@@ -874,6 +880,10 @@ paths:
         name: capacity
         required: true
         type: integer
+      - description: Whether to block until the change completes
+        in: query
+        name: block
+        type: boolean
       produces:
       - application/json
       responses:
