@@ -881,6 +881,24 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 		}
 		driverMetadata = ptyDriverMetadata
 
+	case models.SessionDriverTypeDocker:
+		var dockerDriverMetadata models.SessionDriverDockerParams
+		if err := json.Unmarshal(params.DriverMetadata, &dockerDriverMetadata); err != nil {
+			msg := "Unable to parse new session DOCKER driver parameters from request"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		if err := h.validate.Struct(&dockerDriverMetadata); err != nil {
+			msg := "New session DOCKER driver parameters not valid"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		driverMetadata = dockerDriverMetadata
+
 	default:
 		msg := "New session driver type " + string(params.DriverType) + " not supported"
 		log.WithFields(logTags).Error(msg)
