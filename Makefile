@@ -58,6 +58,13 @@ ts-sdk: .prepare ## Generate typescript client SDK
 	  openapitools/openapi-generator-cli:latest-release \
 	    generate -i /input/swagger.yaml -g typescript-axios -o /output/sdk/ts-axios
 
+.PHONY: docker
+docker: lint ## Build application docker image for local dev
+	docker build \
+		--load \
+		-t "alwitt/rest-pty:latest" \
+		-f Dockerfile .
+
 .PHONY: up
 up: .prepare ## Start docker compose development stack
 	docker compose -f docker/docker-compose.yml up -d
