@@ -620,6 +620,220 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 }
 
 // ======================================================================================
+// Session IO - Read The Newest Output
+
+func TestSessionIOHandlerReadSessionOutputNewest(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	route := "/v1/sessions/{sessionName}/io/output/newest"
+
+	// Case 0: read the newest bytes successfully
+	t.Run("success", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
+			Once()
+
+		payload := []byte("hello world")
+		buffer := mocktest.NewRedisBufferForTest(t)
+		testMocks.redis.EXPECT().
+			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
+			Return(buffer, nil).
+			Once()
+		buffer.EXPECT().
+			ReadNewest(mock.Anything, mock.Anything).
+			RunAndReturn(func(_ context.Context, buf []byte) (int64, int, int64, error) {
+				n := copy(buf, payload)
+				return 5, n, int64(5 + len(payload)), nil
+			}).
+			Once()
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest?limit=128", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+		var parsed api.SessionOutputChunkResponse
+		assert.Nil(json.Unmarshal(respRecorder.Body.Bytes(), &parsed))
+		assert.Equal(int64(5), parsed.ActualOffset)
+		assert.Equal(len(payload), parsed.Read)
+		decoded, err := base64.StdEncoding.DecodeString(parsed.Data)
+		assert.Nil(err)
+		assert.Equal(payload, decoded)
+	})
+
+	// Case 1: limit larger than buffer capacity is capped to capacity
+	t.Run("limit capped to capacity", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
+			Once()
+
+		buffer := mocktest.NewRedisBufferForTest(t)
+		testMocks.redis.EXPECT().
+			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
+			Return(buffer, nil).
+			Once()
+		// The receive buffer is allocated at the capped length (16384), not the request's 99999.
+		buffer.EXPECT().
+			ReadNewest(mock.Anything, mock.MatchedBy(func(buf []byte) bool {
+				return len(buf) == 16384
+			})).
+			Return(int64(0), 0, int64(0), nil).
+			Once()
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest?limit=99999", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 2: missing limit is rejected
+	t.Run("missing limit", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 3: non-integer limit is rejected
+	t.Run("invalid limit", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest?limit=abc", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 4: limit below minimum is rejected
+	t.Run("limit below minimum", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest?limit=0", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 5: unknown session yields 404
+	t.Run("unknown session", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "missing").
+			Return(models.Session{}, goutils.NewNotFoundError("unknown", nil, false)).
+			Once()
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/missing/io/output/newest?limit=128", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusNotFound, respRecorder.Code)
+	})
+
+	// Case 6: buffer read failure surfaces as 500
+	t.Run("buffer read failure", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newSessionIOTestMocks(t)
+		uut := buildSessionIOHandler(assert, testMocks)
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
+			Once()
+
+		buffer := mocktest.NewRedisBufferForTest(t)
+		testMocks.redis.EXPECT().
+			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
+			Return(buffer, nil).
+			Once()
+		buffer.EXPECT().
+			ReadNewest(mock.Anything, mock.Anything).
+			Return(int64(0), 0, int64(0), models.NewPersistenceError("boom", nil, false)).
+			Once()
+
+		req, err := http.NewRequest(
+			"GET", "/v1/sessions/test-session/io/output/newest?limit=128", nil,
+		)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.ReadSessionOutputNewest))
+		router.ServeHTTP(respRecorder, req)
+
+		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
+	})
+}
+
+// ======================================================================================
 // Session IO - Tail The Output Stream
 
 /*

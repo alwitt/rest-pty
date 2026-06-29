@@ -149,6 +149,9 @@ func BuildHTTPServer(
 	_ = registerPathPrefix(perSessionOutputRouter, "/chunk", map[string]http.HandlerFunc{
 		"get": ioAPI.ReadSessionOutputChunk,
 	})
+	_ = registerPathPrefix(perSessionOutputRouter, "/newest", map[string]http.HandlerFunc{
+		"get": ioAPI.ReadSessionOutputNewest,
+	})
 	_ = registerPathPrefix(perSessionOutputRouter, "/tail", map[string]http.HandlerFunc{
 		"get": ioAPI.TailSessionOutput,
 	})

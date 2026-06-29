@@ -758,6 +758,58 @@ paths:
       summary: Read one chunk of session output
       tags:
       - io
+  /v1/sessions/{sessionName}/io/output/newest:
+    get:
+      description: |-
+        Read the newest bytes from a session's output ring buffer. Unlike the "chunk"
+        endpoint no offset is given; the read is anchored to the end of the stream and
+        returns up to "limit" of the most recently written bytes. "actual_offset" reports
+        the stream position the returned data starts at.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: Max number of bytes to read
+        in: query
+        name: limit
+        required: true
+        type: integer
+      - description: Strip ANSI escape sequences from the returned data
+        in: query
+        name: strip_ansi
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/api.SessionOutputChunkResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Read the newest session output
+      tags:
+      - io
   /v1/sessions/{sessionName}/io/output/tail:
     get:
       description: |-

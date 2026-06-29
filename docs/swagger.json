@@ -771,6 +771,78 @@
                 }
             }
         },
+        "/v1/sessions/{sessionName}/io/output/newest": {
+            "get": {
+                "description": "Read the newest bytes from a session's output ring buffer. Unlike the \"chunk\"\nendpoint no offset is given; the read is anchored to the end of the stream and\nreturns up to \"limit\" of the most recently written bytes. \"actual_offset\" reports\nthe stream position the returned data starts at.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "io"
+                ],
+                "summary": "Read the newest session output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max number of bytes to read",
+                        "name": "limit",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Strip ANSI escape sequences from the returned data",
+                        "name": "strip_ansi",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/api.SessionOutputChunkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/sessions/{sessionName}/io/output/tail": {
             "get": {
                 "description": "Continuously stream a session's output via server-sent events (SSE). Each event\ncarries a base64 encoded chunk of bytes read from the output ring buffer. The\nstream runs until the client disconnects.",

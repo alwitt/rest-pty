@@ -188,6 +188,84 @@ func (_c *RedisBufferForTest_ReadAt_Call) RunAndReturn(run func(ctx context.Cont
 	return _c
 }
 
+// ReadNewest provides a mock function for the type RedisBufferForTest
+func (_mock *RedisBufferForTest) ReadNewest(ctx context.Context, buf []byte) (int64, int, int64, error) {
+	ret := _mock.Called(ctx, buf)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReadNewest")
+	}
+
+	var r0 int64
+	var r1 int
+	var r2 int64
+	var r3 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) (int64, int, int64, error)); ok {
+		return returnFunc(ctx, buf)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte) int64); ok {
+		r0 = returnFunc(ctx, buf)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte) int); ok {
+		r1 = returnFunc(ctx, buf)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, []byte) int64); ok {
+		r2 = returnFunc(ctx, buf)
+	} else {
+		r2 = ret.Get(2).(int64)
+	}
+	if returnFunc, ok := ret.Get(3).(func(context.Context, []byte) error); ok {
+		r3 = returnFunc(ctx, buf)
+	} else {
+		r3 = ret.Error(3)
+	}
+	return r0, r1, r2, r3
+}
+
+// RedisBufferForTest_ReadNewest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReadNewest'
+type RedisBufferForTest_ReadNewest_Call struct {
+	*mock.Call
+}
+
+// ReadNewest is a helper method to define mock.On call
+//   - ctx context.Context
+//   - buf []byte
+func (_e *RedisBufferForTest_Expecter) ReadNewest(ctx interface{}, buf interface{}) *RedisBufferForTest_ReadNewest_Call {
+	return &RedisBufferForTest_ReadNewest_Call{Call: _e.mock.On("ReadNewest", ctx, buf)}
+}
+
+func (_c *RedisBufferForTest_ReadNewest_Call) Run(run func(ctx context.Context, buf []byte)) *RedisBufferForTest_ReadNewest_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []byte
+		if args[1] != nil {
+			arg1 = args[1].([]byte)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RedisBufferForTest_ReadNewest_Call) Return(n int64, n1 int, n2 int64, err error) *RedisBufferForTest_ReadNewest_Call {
+	_c.Call.Return(n, n1, n2, err)
+	return _c
+}
+
+func (_c *RedisBufferForTest_ReadNewest_Call) RunAndReturn(run func(ctx context.Context, buf []byte) (int64, int, int64, error)) *RedisBufferForTest_ReadNewest_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Total provides a mock function for the type RedisBufferForTest
 func (_mock *RedisBufferForTest) Total(ctx context.Context) (int64, error) {
 	ret := _mock.Called(ctx)

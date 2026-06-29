@@ -537,6 +537,160 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 }
 
 // ======================================================================================
+// Session IO - Read The Newest Output
+
+// ReadSessionOutputNewest godoc
+// @Summary Read the newest session output
+// @Description Read the newest bytes from a session's output ring buffer. Unlike the "chunk"
+// @Description endpoint no offset is given; the read is anchored to the end of the stream and
+// @Description returns up to "limit" of the most recently written bytes. "actual_offset" reports
+// @Description the stream position the returned data starts at.
+// @tags io
+// @Produce json
+// @Param X-Request-ID header string false "Request ID"
+// @Param sessionName path string true "Session name"
+// @Param limit query int true "Max number of bytes to read"
+// @Param strip_ansi query bool false "Strip ANSI escape sequences from the returned data"
+// @Success 200 {object} SessionOutputChunkResponse "success"
+// @Failure 400 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 403 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 404 {string} string "error"
+// @Failure 500 {object} goutils.RestAPIBaseResponse "error"
+// @Router /v1/sessions/{sessionName}/io/output/newest [get]
+func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http.Request) {
+	var respCode int
+	var response interface{}
+	logTags := h.GetLogTagsForContext(r.Context())
+	defer func() {
+		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
+			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+		}
+	}()
+
+	sessionName := mux.Vars(r)["sessionName"]
+	logTags["session"] = sessionName
+
+	query := r.URL.Query()
+
+	// ------------------------------------------------------------------------------------
+	// Parse query parameters
+
+	// Parse the read limit
+	rawLimit := query.Get("limit")
+	if rawLimit == "" {
+		msg := "Query parameter 'limit' is required"
+		log.WithFields(logTags).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
+		return
+	}
+	limit, err := strconv.Atoi(rawLimit)
+	if err != nil {
+		msg := "Query parameter 'limit' must be an integer"
+		log.WithError(err).WithFields(logTags).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		return
+	}
+	if limit < 1 {
+		msg := "Query parameter 'limit' must be at least 1"
+		log.WithFields(logTags).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
+		return
+	}
+
+	// Parse the optional ANSI-strip flag
+	stripANSI := false
+	if raw := query.Get("strip_ansi"); raw != "" {
+		stripANSI, err = strconv.ParseBool(raw)
+		if err != nil {
+			msg := "Query parameter 'strip_ansi' must be a boolean"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+	}
+
+	// ------------------------------------------------------------------------------------
+	// Fetch the session
+
+	var sessionEntry models.Session
+	if dbErr := h.persistence.UseDatabaseInTransaction(
+		r.Context(), func(ctx context.Context, dbClient db.Database) error {
+			var err error
+			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
+			return err
+		},
+	); dbErr != nil {
+		var unknownSession goutils.NotFoundError
+		if errors.As(dbErr, &unknownSession) {
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+			return
+		}
+		msg := "Failed to fetch session '" + sessionName + "'"
+		log.WithError(dbErr).WithFields(logTags).Error(msg)
+		respCode = http.StatusInternalServerError
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		return
+	}
+
+	// A single read can never return more than the ring buffer can hold, so cap the read
+	// length to the buffer capacity to bound the receive buffer allocation.
+	if int64(limit) > sessionEntry.OutputBufferCapacity {
+		limit = int(sessionEntry.OutputBufferCapacity)
+	}
+
+	// ------------------------------------------------------------------------------------
+	// Read from the output ring buffer
+
+	buffer, err := h.redisClient.GetRingBuffer(
+		r.Context(),
+		session.BuildSessionOutputBufferName(sessionEntry.ID),
+		sessionEntry.OutputBufferCapacity,
+	)
+	if err != nil {
+		msg := "Failed to get session '" + sessionName + "' output buffer"
+		log.WithError(err).WithFields(logTags).Error(msg)
+		respCode = http.StatusInternalServerError
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		return
+	}
+
+	readBuf := make([]byte, limit)
+	actualOffset, readCount, _, err := buffer.ReadNewest(r.Context(), readBuf)
+	if err != nil {
+		msg := "Failed to read session '" + sessionName + "' output buffer"
+		log.WithError(err).WithFields(logTags).Error(msg)
+		respCode = http.StatusInternalServerError
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		return
+	}
+
+	// ------------------------------------------------------------------------------------
+	// Done
+
+	// The chunk content is stripped of ANSI escapes when requested, but "read" and
+	// "actual_offset" stay in terms of buffer bytes so the client can still advance its offset.
+	outData := readBuf[:readCount]
+	if stripANSI {
+		outData = stripANSIEscapes(outData)
+	}
+
+	respCode = http.StatusOK
+	response = SessionOutputChunkResponse{
+		RestAPIBaseResponse: h.GetStdRESTSuccessMsg(r.Context()),
+		ActualOffset:        actualOffset,
+		Read:                readCount,
+		Data:                base64.StdEncoding.EncodeToString(outData),
+	}
+}
+
+// ======================================================================================
 // Session IO - Tail The Output Stream
 
 // defaultTailPollPeriod default interval between buffer data availability checks when no
