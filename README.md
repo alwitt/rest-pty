@@ -4,7 +4,11 @@
 
 [![CICD](https://github.com/alwitt/rest-pty/actions/workflows/cicd.yaml/badge.svg)](https://github.com/alwitt/rest-pty/actions/workflows/cicd.yaml)
 [![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)](https://go.dev/)
+[![Go Report Card][ReportCard-Image]][ReportCard-Url]
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
+[ReportCard-Url]: https://goreportcard.com/report/github.com/alwitt/rest-pty
+[ReportCard-Image]: https://goreportcard.com/badge/github.com/alwitt/rest-pty
 
 `rest-pty` wraps **pseudo-terminal (PTY) sessions behind a REST API**. You define named
 sessions that each run a command, start and stop them on demand, feed them input, and read
