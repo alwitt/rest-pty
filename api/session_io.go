@@ -347,6 +347,24 @@ func stripANSIEscapes(data []byte) []byte {
 // ======================================================================================
 // Session IO - Read One Output Chunk
 
+// maxOutputReadBytes hard upper bound on the number of bytes a single output read may allocate
+// and return. The requested "limit" is capped to this regardless of the session's buffer
+// capacity, so a user-provided value can never drive an unbounded receive buffer allocation.
+const maxOutputReadBytes = 1 << 20 // 1 MiB
+
+// cappedReadLimit returns the read length to use for a single output read: the requested limit,
+// bounded by both the absolute maxOutputReadBytes ceiling and the session's buffer capacity (a
+// single read can never return more than the ring buffer can hold).
+func cappedReadLimit(limit int, bufferCapacity int64) int {
+	if limit > maxOutputReadBytes {
+		limit = maxOutputReadBytes
+	}
+	if int64(limit) > bufferCapacity {
+		limit = int(bufferCapacity)
+	}
+	return limit
+}
+
 // SessionOutputChunkResponse response containing one chunk of session output
 type SessionOutputChunkResponse struct {
 	goutils.RestAPIBaseResponse
@@ -485,11 +503,9 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// A single read can never return more than the ring buffer can hold, so cap the read
-	// length to the buffer capacity to bound the receive buffer allocation.
-	if int64(limit) > sessionEntry.OutputBufferCapacity {
-		limit = int(sessionEntry.OutputBufferCapacity)
-	}
+	// Cap the read length to bound the receive buffer allocation against the user-provided
+	// limit (see cappedReadLimit).
+	limit = cappedReadLimit(limit, sessionEntry.OutputBufferCapacity)
 
 	// ------------------------------------------------------------------------------------
 	// Read from the output ring buffer
@@ -639,11 +655,9 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// A single read can never return more than the ring buffer can hold, so cap the read
-	// length to the buffer capacity to bound the receive buffer allocation.
-	if int64(limit) > sessionEntry.OutputBufferCapacity {
-		limit = int(sessionEntry.OutputBufferCapacity)
-	}
+	// Cap the read length to bound the receive buffer allocation against the user-provided
+	// limit (see cappedReadLimit).
+	limit = cappedReadLimit(limit, sessionEntry.OutputBufferCapacity)
 
 	// ------------------------------------------------------------------------------------
 	// Read from the output ring buffer

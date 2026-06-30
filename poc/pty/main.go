@@ -94,10 +94,17 @@ func getRedisParams() goutilsRedis.ConnectionConfig {
 	if err != nil {
 		log.WithError(err).Fatal("UNITTEST_REDIS_PORT is not int")
 	}
+	if serverPort < 1 || serverPort > 65535 {
+		log.WithField("port", serverPort).Fatal("UNITTEST_REDIS_PORT out of range [1, 65535]")
+	}
 
 	serverDB, err := strconv.Atoi(serverDBStr)
 	if err != nil {
 		log.WithError(err).Fatal("UNITTEST_REDIS_DB is not int")
+	}
+	// Redis ships with 16 logical databases by default (indices 0-15).
+	if serverDB < 0 || serverDB >= 16 {
+		log.WithField("db", serverDB).Fatal("UNITTEST_REDIS_DB out of range [0, 15]")
 	}
 
 	return goutilsRedis.ConnectionConfig{

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 
 	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/models"
@@ -476,8 +477,8 @@ func (d *databaseImpl) ListSessions(
 	}
 
 	orderDirection := "asc"
-	if filters.OrderDirection != nil {
-		orderDirection = *filters.OrderDirection
+	if filters.OrderDirection != nil && strings.ToLower(*filters.OrderDirection) == "desc" {
+		orderDirection = "desc"
 	}
 
 	if filters.OrderByName {

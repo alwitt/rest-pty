@@ -103,7 +103,7 @@ type RedisConnectionConfig struct {
 	// Port of the server
 	Port uint16 `mapstructure:"port" json:"port"`
 	// DBNumber number of the REDIS database
-	DBNumber uint32 `mapstructure:"dbNumber" json:"dbNumber"`
+	DBNumber uint32 `mapstructure:"dbNumber" json:"dbNumber" validate:"lte=15"`
 }
 
 // ======================================================================================
