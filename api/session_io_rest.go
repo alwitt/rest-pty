@@ -2,41 +2,30 @@
 package api //revive:disable-line:var-naming
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"reflect"
-	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
-	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
-	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/oklog/ulid/v2"
 )
 
 // SessionIOHandler session IO API handlers
 type SessionIOHandler struct {
 	goutils.RestAPIHandler
-	validate *validator.Validate
 
-	// persistence layer client
-	persistence db.Client
-
-	// redisClient redis Client handle
-	redisClient goutilsRedis.Client
+	// core transport-agnostic session IO business logic
+	core SessionIOCore
 }
 
 /*
@@ -73,12 +62,14 @@ func NewSessionIOHandler(
 			LogLevel:      logConfig.LogLevel,
 			MetricsHelper: metrics,
 		},
-		validate:    validator.New(),
-		persistence: persistence,
-		redisClient: redisClient,
+		core: SessionIOCore{
+			validate:    validator.New(),
+			persistence: persistence,
+			redisClient: redisClient,
+		},
 	}
 
-	if err := models.RegisterWithValidator(handler.validate); err != nil {
+	if err := models.RegisterWithValidator(handler.core.validate); err != nil {
 		return handler, goutils.NewRuntimeError("failed to install custom validation macros", err, true)
 	}
 
@@ -149,7 +140,7 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 	}()
 
 	// Validate user commands
-	if err := h.validate.Struct(&params); err != nil {
+	if err := h.core.validate.Struct(&params); err != nil {
 		msg := "User commands parameters not valid"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		respCode = http.StatusBadRequest
@@ -166,156 +157,30 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 	}
 
 	// ------------------------------------------------------------------------------------
-	// Fetch the sessionEntry
-	var sessionEntry models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
-			return err
-		},
-	); dbErr != nil {
+	// Submit the commands to the session runner
+
+	if err := h.core.SubmitUserCommandToSession(
+		r.Context(), sessionName, params.Commands,
+	); err != nil {
 		var unknownSession goutils.NotFoundError
-		if errors.As(dbErr, &unknownSession) {
+		var notReady goutils.ConsistencyError
+		switch {
+		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(logTags).Error(msg)
 			respCode = http.StatusNotFound
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-			return
-		}
-		msg := "Failed to fetch session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-		return
-	}
-
-	// Verify session ready
-	if sessionEntry.State != models.SessionStateReady {
-		msg := "Session '" + sessionName + "' is not ready to accept user commands"
-		log.WithFields(logTags).Error(msg)
-		respCode = http.StatusConflict
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
-		return
-	}
-
-	// ------------------------------------------------------------------------------------
-	// Setup REDIS IPC queues
-
-	// Get REDIS IPC queue to submit commands to the session runner
-	reqQueue, err := h.redisClient.GetQueueHandle(
-		r.Context(), session.BuildSessionIPCQueueName(sessionEntry.ID),
-	)
-	if err != nil {
-		msg := "Failed to get session '" + sessionName + "' IPC request queue"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	requestID := ulid.Make().String()
-	ipcRequest := models.IPCMessageReqRunCommands{
-		BaseIPCMessage: models.BaseIPCMessage{
-			RequestID: requestID,
-			Type:      models.IPCMsgTypeReqRunCommands,
-			Sender:    uuid.NewString(),
-			Timestamp: time.Now().UTC(),
-		},
-		Commands: params.Commands,
-	}
-
-	// Get REDIS IPC queue to receive response from the session runner
-	respQueue, err := h.redisClient.GetQueueHandle(
-		r.Context(), session.BuildSessionIPCRespQueueName(requestID),
-	)
-	if err != nil {
-		msg := "Failed to get IPC response queue"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-	defer func() {
-		lclCtx, lclCtxCancel := context.WithTimeout(context.Background(), time.Second*10)
-		defer lclCtxCancel()
-		err := h.redisClient.DeleteQueue(lclCtx, session.BuildSessionIPCRespQueueName(requestID))
-		if err != nil {
-			log.WithError(err).WithFields(logTags).Error("IPC Response queue cleanup failed")
-		}
-	}()
-
-	// ------------------------------------------------------------------------------------
-	// Submit request
-
-	if _, err := reqQueue.PushRight(r.Context(), ipcRequest, nil); err != nil {
-		msg := "Failed to submit commands to session '" + sessionName + "' runner via IPC"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	// ------------------------------------------------------------------------------------
-	// Wait for response
-
-	resp, err := respQueue.PopLeft(r.Context(), true, common.GetTypedPtr(time.Second*60))
-	if err != nil {
-		msg := "Failed to receive response from session '" + sessionName + "' runner via IPC"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-	if resp == nil {
-		msg := "Session '" + sessionName + "' runner returned empty response for user commands"
-		log.WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
-		return
-	}
-
-	// Parse the response
-	respContent, err := resp.StringPayload()
-	if err != nil {
-		msg := "Failed to read response from session '" + sessionName + "' runner"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-	parsedResp, err := models.ParseIPCMessage(h.validate, []byte(respContent))
-	if err != nil {
-		msg := "Failed to parse response from session '" + sessionName + "' runner"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	// Check for success
-	switch t := parsedResp.(type) {
-	case models.IPCMessageRespUniversal:
-		if !t.Success {
-			errMsg := "NO ERROR PROVIDED"
-			if t.ErrorMsg != nil {
-				errMsg = *t.ErrorMsg
-			}
-			msg := "Session '" + sessionName + "' runner failed to process user commands"
-			log.WithField("error", errMsg).WithFields(logTags).Error(msg)
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		case errors.As(err, &notReady):
+			msg := "Session '" + sessionName + "' is not ready to accept user commands"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusConflict
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		default:
+			msg := "Failed to submit commands to session '" + sessionName + "' runner"
+			log.WithError(err).WithFields(logTags).Error(msg)
 			respCode = http.StatusInternalServerError
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, errMsg)
-			return
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}
-
-	default:
-		err := goutils.NewRuntimeError(
-			"unexpected IPC response payload type "+reflect.TypeOf(parsedResp).String(), nil, true,
-		)
-		msg := "Response from session '" + sessionName + "' runner is wrong"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 
@@ -328,42 +193,7 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 }
 
 // ======================================================================================
-// Session IO - Output ANSI escape stripping
-
-// ansiEscapeSequence matches ANSI / VT escape sequences in raw terminal output: the 7-bit
-// "ESC <Fe>" forms, the standalone 8-bit C1 controls, and CSI sequences (both the 7-bit "ESC ["
-// and 8-bit 0x9B introducers).
-var ansiEscapeSequence = regexp.MustCompile(
-	`(?:\x1B[@-Z\\-_]|[\x80-\x9A\x9C-\x9F]|(?:\x1B\[|\x9B)[0-?]*[ -/]*[@-~])`,
-)
-
-// stripANSIEscapes removes all ANSI escape sequences from the given output bytes, returning the
-// cleaned slice. Filtering is per-call, so an escape sequence split across two streamed chunks is
-// not stripped; this is acceptable for the line-oriented output the filter targets.
-func stripANSIEscapes(data []byte) []byte {
-	return ansiEscapeSequence.ReplaceAll(data, nil)
-}
-
-// ======================================================================================
 // Session IO - Read One Output Chunk
-
-// maxOutputReadBytes hard upper bound on the number of bytes a single output read may allocate
-// and return. The requested "limit" is capped to this regardless of the session's buffer
-// capacity, so a user-provided value can never drive an unbounded receive buffer allocation.
-const maxOutputReadBytes = 1 << 20 // 1 MiB
-
-// cappedReadLimit returns the read length to use for a single output read: the requested limit,
-// bounded by both the absolute maxOutputReadBytes ceiling and the session's buffer capacity (a
-// single read can never return more than the ring buffer can hold).
-func cappedReadLimit(limit int, bufferCapacity int64) int {
-	if limit > maxOutputReadBytes {
-		limit = maxOutputReadBytes
-	}
-	if int64(limit) > bufferCapacity {
-		limit = int(bufferCapacity)
-	}
-	return limit
-}
 
 // SessionOutputChunkResponse response containing one chunk of session output
 type SessionOutputChunkResponse struct {
@@ -478,55 +308,21 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	}
 
 	// ------------------------------------------------------------------------------------
-	// Fetch the session
-
-	var sessionEntry models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
-			return err
-		},
-	); dbErr != nil {
-		var unknownSession goutils.NotFoundError
-		if errors.As(dbErr, &unknownSession) {
-			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
-			respCode = http.StatusNotFound
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-			return
-		}
-		msg := "Failed to fetch session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-		return
-	}
-
-	// Cap the read length to bound the receive buffer allocation against the user-provided
-	// limit (see cappedReadLimit).
-	limit = cappedReadLimit(limit, sessionEntry.OutputBufferCapacity)
-
-	// ------------------------------------------------------------------------------------
 	// Read from the output ring buffer
 
-	buffer, err := h.redisClient.GetRingBuffer(
-		r.Context(),
-		session.BuildSessionOutputBufferName(sessionEntry.ID),
-		sessionEntry.OutputBufferCapacity,
+	readResult, err := h.core.ReadSessionOutputChunk(
+		r.Context(), sessionName, offset, limit, stripANSI,
 	)
 	if err != nil {
-		msg := "Failed to get session '" + sessionName + "' output buffer"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	readBuf := make([]byte, limit)
-	actualOffset, readCount, _, err := buffer.ReadAt(r.Context(), readBuf, offset)
-	if err != nil {
-		msg := "Failed to read session '" + sessionName + "' output buffer"
+		var unknownSession goutils.NotFoundError
+		if errors.As(err, &unknownSession) {
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		msg := "Failed to read session '" + sessionName + "' output"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
@@ -536,19 +332,12 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	// ------------------------------------------------------------------------------------
 	// Done
 
-	// The chunk content is stripped of ANSI escapes when requested, but "read" and
-	// "actual_offset" stay in terms of buffer bytes so the client can still advance its offset.
-	outData := readBuf[:readCount]
-	if stripANSI {
-		outData = stripANSIEscapes(outData)
-	}
-
 	respCode = http.StatusOK
 	response = SessionOutputChunkResponse{
 		RestAPIBaseResponse: h.GetStdRESTSuccessMsg(r.Context()),
-		ActualOffset:        actualOffset,
-		Read:                readCount,
-		Data:                base64.StdEncoding.EncodeToString(outData),
+		ActualOffset:        readResult.ActualOffset,
+		Read:                readResult.Read,
+		Data:                base64.StdEncoding.EncodeToString(readResult.Data),
 	}
 }
 
@@ -630,55 +419,19 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 	}
 
 	// ------------------------------------------------------------------------------------
-	// Fetch the session
-
-	var sessionEntry models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
-			return err
-		},
-	); dbErr != nil {
-		var unknownSession goutils.NotFoundError
-		if errors.As(dbErr, &unknownSession) {
-			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
-			respCode = http.StatusNotFound
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-			return
-		}
-		msg := "Failed to fetch session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-		return
-	}
-
-	// Cap the read length to bound the receive buffer allocation against the user-provided
-	// limit (see cappedReadLimit).
-	limit = cappedReadLimit(limit, sessionEntry.OutputBufferCapacity)
-
-	// ------------------------------------------------------------------------------------
 	// Read from the output ring buffer
 
-	buffer, err := h.redisClient.GetRingBuffer(
-		r.Context(),
-		session.BuildSessionOutputBufferName(sessionEntry.ID),
-		sessionEntry.OutputBufferCapacity,
-	)
+	readResult, err := h.core.ReadSessionOutputNewest(r.Context(), sessionName, limit, stripANSI)
 	if err != nil {
-		msg := "Failed to get session '" + sessionName + "' output buffer"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	readBuf := make([]byte, limit)
-	actualOffset, readCount, _, err := buffer.ReadNewest(r.Context(), readBuf)
-	if err != nil {
-		msg := "Failed to read session '" + sessionName + "' output buffer"
+		var unknownSession goutils.NotFoundError
+		if errors.As(err, &unknownSession) {
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			return
+		}
+		msg := "Failed to read session '" + sessionName + "' output"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
@@ -688,19 +441,12 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 	// ------------------------------------------------------------------------------------
 	// Done
 
-	// The chunk content is stripped of ANSI escapes when requested, but "read" and
-	// "actual_offset" stay in terms of buffer bytes so the client can still advance its offset.
-	outData := readBuf[:readCount]
-	if stripANSI {
-		outData = stripANSIEscapes(outData)
-	}
-
 	respCode = http.StatusOK
 	response = SessionOutputChunkResponse{
 		RestAPIBaseResponse: h.GetStdRESTSuccessMsg(r.Context()),
-		ActualOffset:        actualOffset,
-		Read:                readCount,
-		Data:                base64.StdEncoding.EncodeToString(outData),
+		ActualOffset:        readResult.ActualOffset,
+		Read:                readResult.Read,
+		Data:                base64.StdEncoding.EncodeToString(readResult.Data),
 	}
 }
 
@@ -818,38 +564,17 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	}
 
 	// ------------------------------------------------------------------------------------
-	// Fetch the session
-
-	var sessionEntry models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			sessionEntry, err = dbClient.GetSessionByName(ctx, sessionName)
-			return err
-		},
-	); dbErr != nil {
-		var unknownSession goutils.NotFoundError
-		if errors.As(dbErr, &unknownSession) {
-			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
-			writeError(http.StatusNotFound, msg, dbErr.Error())
-			return
-		}
-		msg := "Failed to fetch session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
-		writeError(http.StatusInternalServerError, msg, dbErr.Error())
-		return
-	}
-
-	// ------------------------------------------------------------------------------------
 	// Prepare the output ring buffer reader
 
-	buffer, err := h.redisClient.GetRingBuffer(
-		r.Context(),
-		session.BuildSessionOutputBufferName(sessionEntry.ID),
-		sessionEntry.OutputBufferCapacity,
-	)
+	buffer, err := h.core.GetSessionOutputBuffer(r.Context(), sessionName)
 	if err != nil {
+		var unknownSession goutils.NotFoundError
+		if errors.As(err, &unknownSession) {
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(err).WithFields(logTags).Error(msg)
+			writeError(http.StatusNotFound, msg, err.Error())
+			return
+		}
 		msg := "Failed to get session '" + sessionName + "' output buffer"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		writeError(http.StatusInternalServerError, msg, err.Error())

@@ -2,7 +2,6 @@
 package api //revive:disable-line:var-naming
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -20,13 +19,9 @@ import (
 // SessionManagerHandler session management API handlers
 type SessionManagerHandler struct {
 	goutils.RestAPIHandler
-	validate *validator.Validate
 
-	// persistence layer client
-	persistence db.Client
-
-	// manager of sessions
-	manager session.Manager
+	// core transport-agnostic session management logic
+	core SessionManagerCore
 }
 
 /*
@@ -63,12 +58,14 @@ func NewSessionManagerHandler(
 			LogLevel:      logConfig.LogLevel,
 			MetricsHelper: metrics,
 		},
-		validate:    validator.New(),
-		persistence: persistence,
-		manager:     manager,
+		core: SessionManagerCore{
+			validate:    validator.New(),
+			persistence: persistence,
+			manager:     manager,
+		},
 	}
 
-	if err := models.RegisterWithValidator(handler.validate); err != nil {
+	if err := models.RegisterWithValidator(handler.core.validate); err != nil {
 		return handler, goutils.NewRuntimeError(
 			"failed to install custom validation macros", err, true,
 		)
@@ -118,11 +115,7 @@ func (h SessionManagerHandler) Ready(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	if err := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(_ context.Context, dbClient db.Database) error {
-			return dbClient.Ready()
-		},
-	); err != nil {
+	if err := h.core.Ready(r.Context()); err != nil {
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(
 			r.Context(), http.StatusInternalServerError, "not ready", err.Error(),
@@ -211,78 +204,17 @@ func (h SessionManagerHandler) DefineNewSession(w http.ResponseWriter, r *http.R
 		log.WithFields(logTags).WithField("new-session", string(t)).Debug("Defining new session")
 	}
 
-	// Validate parameters
-	if err := h.validate.Struct(&params); err != nil {
-		msg := "New session parameters not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	// Process driver metadata
-	var driverMetadata interface{}
-	switch params.DriverType {
-	case models.SessionDriverTypePTY:
-		var ptyDriverMetadata models.SessionDriverPTYParams
-		if err := json.Unmarshal(params.DriverMetadata, &ptyDriverMetadata); err != nil {
-			msg := "Unable to parse new session PTY driver parameters from request"
-			log.WithError(err).WithFields(logTags).Error(msg)
+	// Validate parameters, resolve driver metadata, and define the session
+	newSession, dbErr := h.core.DefineNewSession(r.Context(), params)
+	if dbErr != nil {
+		var validation goutils.ValidationError
+		if errors.As(dbErr, &validation) {
+			msg := "New session parameters not valid"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
 			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 			return
 		}
-		if err := h.validate.Struct(&ptyDriverMetadata); err != nil {
-			msg := "New session PTY driver parameters not valid"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		driverMetadata = ptyDriverMetadata
-
-	case models.SessionDriverTypeDocker:
-		var dockerDriverMetadata models.SessionDriverDockerParams
-		if err := json.Unmarshal(params.DriverMetadata, &dockerDriverMetadata); err != nil {
-			msg := "Unable to parse new session docker driver parameters from request"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		if err := h.validate.Struct(&dockerDriverMetadata); err != nil {
-			msg := "New session docker driver parameters not valid"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		driverMetadata = dockerDriverMetadata
-
-	default:
-		msg := "New session driver type " + string(params.DriverType) + " not supported"
-		log.WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
-		return
-	}
-
-	// Define the session
-	var newSession models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			newSession, err = dbClient.DefineNewSession(
-				ctx,
-				params.Name,
-				params.Description,
-				params.Command,
-				params.OutputBufferCapacity,
-				driverMetadata,
-			)
-			return err
-		},
-	); dbErr != nil {
 		msg := "Failed to define new session"
 		log.WithError(dbErr).WithFields(logTags).Error(msg)
 		respCode = http.StatusInternalServerError
@@ -406,24 +338,17 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 		log.WithFields(logTags).WithField("filters", string(t)).Debug("Listing sessions")
 	}
 
-	// Validate parameters
-	if err := h.validate.Struct(&filters); err != nil {
-		msg := "Session list query filters not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
-	// Fetch the sessions
-	var sessions []models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			sessions, err = dbClient.ListSessions(ctx, filters)
-			return err
-		},
-	); dbErr != nil {
+	// Validate and fetch the sessions
+	sessions, dbErr := h.core.ListSessions(r.Context(), filters)
+	if dbErr != nil {
+		var validation goutils.ValidationError
+		if errors.As(dbErr, &validation) {
+			msg := "Session list query filters not valid"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+			return
+		}
 		msg := "Failed to list sessions"
 		log.WithError(dbErr).WithFields(logTags).Error(msg)
 		respCode = http.StatusInternalServerError
@@ -467,14 +392,8 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 	sessionName := mux.Vars(r)["sessionName"]
 
 	// Fetch the session
-	var session models.Session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			var err error
-			session, err = dbClient.GetSessionByName(ctx, sessionName)
-			return err
-		},
-	); dbErr != nil {
+	session, dbErr := h.core.GetSession(r.Context(), sessionName)
+	if dbErr != nil {
 		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
@@ -572,7 +491,7 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 	}
 
 	// Apply the new capacity through the session manager
-	if err := h.manager.ChangeOutputBufferCapacity(
+	if err := h.core.UpdateSessionOutputBufCapacity(
 		r.Context(), sessionName, newCap, blocking,
 	); err != nil {
 		var unknownSession goutils.NotFoundError
@@ -641,24 +560,19 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
 	}
-	if err := h.validate.Var(raw, "session_runner_mode_type"); err != nil {
-		msg := "Query parameter 'mode' is not a valid session runner mode"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
 	newMode := models.SessionRunnerModeTypeENUMType(raw)
 
 	// Apply the new runner mode
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionRunMode(ctx, sessionName, newMode)
-		},
-	); dbErr != nil {
+	if dbErr := h.core.UpdateSessionRunMode(r.Context(), sessionName, newMode); dbErr != nil {
+		var validation goutils.ValidationError
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
+		case errors.As(dbErr, &validation):
+			msg := "Query parameter 'mode' is not a valid session runner mode"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -742,24 +656,17 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 		log.WithFields(logTags).WithField("new-command", string(t)).Debug("Updating session command")
 	}
 
-	// Validate parameters
-	if err := h.validate.Struct(&newCommand); err != nil {
-		msg := "New session command not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
 	// Apply the new command
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionCommand(ctx, sessionName, newCommand)
-		},
-	); dbErr != nil {
+	if dbErr := h.core.UpdateSessionCommand(r.Context(), sessionName, newCommand); dbErr != nil {
+		var validation goutils.ValidationError
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
+		case errors.As(dbErr, &validation):
+			msg := "New session command not valid"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -852,7 +759,7 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 	}
 
 	// Validate parameters
-	if err := h.validate.Struct(&params); err != nil {
+	if err := h.core.validate.Struct(&params); err != nil {
 		msg := "New session driver parameters not valid"
 		log.WithError(err).WithFields(logTags).Error(msg)
 		respCode = http.StatusBadRequest
@@ -860,63 +767,19 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Process driver metadata
-	var driverMetadata interface{}
-	switch params.DriverType {
-	case models.SessionDriverTypePTY:
-		var ptyDriverMetadata models.SessionDriverPTYParams
-		if err := json.Unmarshal(params.DriverMetadata, &ptyDriverMetadata); err != nil {
-			msg := "Unable to parse new session PTY driver parameters from request"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		if err := h.validate.Struct(&ptyDriverMetadata); err != nil {
-			msg := "New session PTY driver parameters not valid"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		driverMetadata = ptyDriverMetadata
-
-	case models.SessionDriverTypeDocker:
-		var dockerDriverMetadata models.SessionDriverDockerParams
-		if err := json.Unmarshal(params.DriverMetadata, &dockerDriverMetadata); err != nil {
-			msg := "Unable to parse new session DOCKER driver parameters from request"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		if err := h.validate.Struct(&dockerDriverMetadata); err != nil {
-			msg := "New session DOCKER driver parameters not valid"
-			log.WithError(err).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-			return
-		}
-		driverMetadata = dockerDriverMetadata
-
-	default:
-		msg := "New session driver type " + string(params.DriverType) + " not supported"
-		log.WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
-		return
-	}
-
-	// Apply the new driver
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionDriver(ctx, sessionName, driverMetadata)
-		},
+	// Apply the new driver (metadata parse/validation happens in the core)
+	if dbErr := h.core.UpdateSessionDriver(
+		r.Context(), sessionName, params.DriverType, params.DriverMetadata,
 	); dbErr != nil {
+		var validation goutils.ValidationError
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
-		var validation goutils.ValidationError
 		switch {
+		case errors.As(dbErr, &validation):
+			msg := "New session driver parameters not valid"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
@@ -926,11 +789,6 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
 			respCode = http.StatusConflict
-			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-		case errors.As(dbErr, &validation):
-			msg := "New session driver parameters not valid"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
-			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to update driver for session '" + sessionName + "'"
@@ -984,32 +842,28 @@ func (h SessionManagerHandler) UpdateSessionName(w http.ResponseWriter, r *http.
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
 	}
-	if err := h.validate.Var(newName, "session_name_type"); err != nil {
-		msg := "Query parameter 'name' is not a valid session name"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
 
 	// Apply the new name
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionName(ctx, sessionName, newName)
-		},
-	); dbErr != nil {
+	if dbErr := h.core.UpdateSessionName(r.Context(), sessionName, newName); dbErr != nil {
+		var validation goutils.ValidationError
 		var unknownSession goutils.NotFoundError
-		if errors.As(dbErr, &unknownSession) {
+		switch {
+		case errors.As(dbErr, &validation):
+			msg := "Query parameter 'name' is not a valid session name"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
 			log.WithError(dbErr).WithFields(logTags).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
-			return
+		default:
+			msg := "Failed to update name for session '" + sessionName + "'"
+			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			respCode = http.StatusInternalServerError
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
-		msg := "Failed to update name for session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
-		respCode = http.StatusInternalServerError
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		return
 	}
 
@@ -1083,20 +937,9 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 			WithField("new-description", string(t)).Debug("Updating session description")
 	}
 
-	// Validate parameters
-	if err := h.validate.Struct(&params); err != nil {
-		msg := "New session description not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
-		respCode = http.StatusBadRequest
-		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
-		return
-	}
-
 	// Apply the new description
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.UpdateSessionDescription(ctx, sessionName, params.Description)
-		},
+	if dbErr := h.core.UpdateSessionDescription(
+		r.Context(), sessionName, params.Description,
 	); dbErr != nil {
 		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
@@ -1148,11 +991,7 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 	sessionName := mux.Vars(r)["sessionName"]
 
 	// Delete the session
-	if dbErr := h.persistence.UseDatabaseInTransaction(
-		r.Context(), func(ctx context.Context, dbClient db.Database) error {
-			return dbClient.DeleteSession(ctx, sessionName)
-		},
-	); dbErr != nil {
+	if dbErr := h.core.DeleteSession(r.Context(), sessionName); dbErr != nil {
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
@@ -1227,7 +1066,7 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Start the session
-	if err := h.manager.StartSession(r.Context(), sessionName, blocking); err != nil {
+	if err := h.core.StartSession(r.Context(), sessionName, blocking); err != nil {
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
@@ -1302,7 +1141,7 @@ func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Stop the session
-	if err := h.manager.StopSession(r.Context(), sessionName, blocking); err != nil {
+	if err := h.core.StopSession(r.Context(), sessionName, blocking); err != nil {
 		var unknownSession goutils.NotFoundError
 		var consistency goutils.ConsistencyError
 		switch {
