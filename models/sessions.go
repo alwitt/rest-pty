@@ -180,10 +180,13 @@ const (
 
 // ContainerHostMount a host path bind-mounted into the container
 type ContainerHostMount struct {
-	// Path host path to mount (used as both source and target)
+	// Path host path to mount
 	Path string `json:"path" validate:"required"`
 	// ReadOnly whether to mount the path read-only; defaults to true when nil
 	ReadOnly *bool `json:"read_only,omitempty"`
+	// MountPath path within the container to mount the host path. The mount path will
+	// mirror the host path if this is not specified.
+	MountPath *string `json:"mount_path,omitempty"`
 }
 
 // IsReadOnly resolve ReadOnly, defaulting to true when unset
@@ -192,6 +195,14 @@ func (m ContainerHostMount) IsReadOnly() bool {
 		return true
 	}
 	return *m.ReadOnly
+}
+
+// GetMountPath get the in-container mount path
+func (m ContainerHostMount) GetMountPath() string {
+	if m.MountPath != nil {
+		return *m.MountPath
+	}
+	return m.Path
 }
 
 // ContainerTmpfsMount a writable tmpfs mount within the (otherwise read-only) container

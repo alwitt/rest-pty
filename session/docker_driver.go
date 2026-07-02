@@ -379,7 +379,7 @@ func (d *dockerDriver) buildHostConfig(
 	// Host path bind mounts.
 	var binds []string
 	for _, mount := range d.metadata.HostMounts {
-		bind := mount.Path + ":" + mount.Path
+		bind := mount.Path + ":" + mount.GetMountPath()
 		if mount.IsReadOnly() {
 			bind += ":ro"
 		}
