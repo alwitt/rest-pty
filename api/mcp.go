@@ -46,9 +46,9 @@ type MCPDockerDriverSettings struct {
 	Image string `json:"image" validate:"required" jsonschema:"container image reference to run"`
 
 	// DisplayRows TTY number of rows (in cells).
-	DisplayRows uint16 `json:"display_rows" validate:"gte=30" jsonschema:"TTY number of rows (in cells)"`
+	DisplayRows uint16 `json:"display_rows" validate:"gte=30" jsonschema:"TTY number of rows (in cells); must be >= 30"`
 	// DisplayCols TTY number of columns (in cells).
-	DisplayCols uint16 `json:"display_cols" validate:"gte=80" jsonschema:"TTY number of columns (in cells)"`
+	DisplayCols uint16 `json:"display_cols" validate:"gte=80" jsonschema:"TTY number of columns (in cells); must be >= 80"`
 
 	// WorkingDir working directory for the container process; defaults to '/tmp'
 	WorkingDir string `json:"working_dir,omitempty" jsonschema:"working directory for the container process; defaults to '/tmp'"`
@@ -97,9 +97,9 @@ type MCPDefineNewSessionParams struct {
 	// Description session description
 	Description *string `json:"description,omitempty" validate:"omitempty" jsonschema:"session description"`
 	// Command the session will operate
-	Command models.SessionCommand `json:"command" validate:"required" jsonschema:"the command the session will operate"`
+	Command models.SessionCommand `json:"command" validate:"required" jsonschema:"the command the session will run"`
 	// OutputBufferCapacity buffering capacity for holding command output history
-	OutputBufferCapacity int64 `json:"io_buf_cap" validate:"required,gte=16384" jsonschema:"buffering capacity for holding command output history"`
+	OutputBufferCapacity int64 `json:"io_buf_cap" validate:"required,gte=16384" jsonschema:"buffering capacity, in bytes, for holding command output history; must be >= 16384"`
 	// Driver the sandboxed docker container settings for the session
 	Driver MCPDockerDriverSettings `json:"driver" validate:"required" jsonschema:"the sandboxed docker container settings for the session"`
 }
@@ -126,7 +126,7 @@ type MCPUpdateSessionOutputBufCapacityParams struct {
 	// SessionName name of the session to update
 	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to update"`
 	// Capacity new output buffer capacity
-	Capacity int64 `json:"capacity" validate:"required,gte=16384" jsonschema:"new output buffer capacity"`
+	Capacity int64 `json:"capacity" validate:"required,gte=16384" jsonschema:"new output buffer capacity, in bytes; must be >= 16384"`
 }
 
 // MCPUpdateSessionCommandParams parameters for the update-session-command tool.
@@ -136,7 +136,7 @@ type MCPUpdateSessionCommandParams struct {
 	// SessionName name of the session to update
 	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to update"`
 	// Command new command the session runs
-	Command models.SessionCommand `json:"command" validate:"required" jsonschema:"new command the session runs"`
+	Command models.SessionCommand `json:"command" validate:"required" jsonschema:"the new command the session will run"`
 }
 
 // MCPUpdateSessionNameParams parameters for the update-session-name tool.
@@ -190,15 +190,20 @@ type MCPStopSessionParams struct {
 // stream, which has no MCP equivalent). As with the management tools, a request's path
 // parameter and body/query are flattened into a single struct per tool.
 
-// MCPSubmitUserCommandParams parameters for the submit-user-command tool.
+// MCPSubmitUserInputParams parameters for the submit-user-command tool.
 //
 // Mirrors UserCommandRequest (POST /v1/sessions/{sessionName}/io/input/commands). Only
 // permitted on READY sessions.
-type MCPSubmitUserCommandParams struct {
-	// SessionName name of the session to submit commands to
-	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to submit commands to"`
-	// Commands the list of commands to send to the session
-	Commands []models.SessionInputCommand `json:"commands" validate:"required,gte=1,dive" jsonschema:"the list of commands to send to the session"`
+//
+// Note: the input-events field is deliberately named "inputs" here rather than "commands"
+// (its name on the REST DTO). These are keystroke-level input events fed to the session's
+// running process, NOT the {cmd, args} "command" a session is defined to run; keeping the
+// names distinct on the agent-facing surface prevents an agent from conflating the two.
+type MCPSubmitUserInputParams struct {
+	// SessionName name of the session to submit input to
+	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to submit input to"`
+	// Inputs the list of input events to send to the session's running process
+	Inputs []models.SessionInputCommand `json:"inputs" validate:"required,gte=1,dive" jsonschema:"the ordered list of input events to send to the session's running process (keystrokes: text, control characters, Enter, or raw bytes); processed in sequence. This is session input fed to STDIN, not the {cmd, args} command the session is defined to run. Must contain at least 1 input."`
 }
 
 // MCPReadSessionOutputChunkParams parameters for the read-session-output-chunk tool.
@@ -210,9 +215,9 @@ type MCPReadSessionOutputChunkParams struct {
 	// SessionName name of the session to read output from
 	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to read output from"`
 	// Offset read index position within the session output stream
-	Offset int64 `json:"offset" validate:"gte=0" jsonschema:"read index position within the session output stream"`
+	Offset int64 `json:"offset" validate:"gte=0" jsonschema:"byte offset to start reading from within the session output stream; 0 is the start of the stream. To continue reading sequentially, use a prior read's actual_offset + read as the next offset. Must be >= 0. If the offset has aged out of the ring buffer the read is moved forward to the oldest buffered byte (see the returned actual_offset)."`
 	// Limit max number of bytes to read
-	Limit int `json:"limit" validate:"required,gte=1" jsonschema:"max number of bytes to read"`
+	Limit int `json:"limit" validate:"required,gte=1" jsonschema:"max number of bytes to read; must be >= 1"`
 }
 
 // MCPReadSessionOutputNewestParams parameters for the read-session-output-newest tool.
@@ -224,7 +229,7 @@ type MCPReadSessionOutputNewestParams struct {
 	// SessionName name of the session to read output from
 	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to read output from"`
 	// Limit max number of bytes to read
-	Limit int `json:"limit" validate:"required,gte=1" jsonschema:"max number of bytes to read"`
+	Limit int `json:"limit" validate:"required,gte=1" jsonschema:"max number of bytes to read; must be >= 1"`
 }
 
 // ======================================================================================
@@ -298,12 +303,18 @@ type MCPListSessionsResp struct {
 	Sessions []MCPSession `json:"sessions" jsonschema:"sessions matching the query filter"`
 }
 
-// MCPReadSessionOutputResp structured chaining metadata for the output-read tools.
+// MCPReadSessionOutputResp structured result for the output-read tools.
 //
-// The decoded terminal output is returned to the agent as a text content block; this
-// struct carries only the positional metadata an agent needs to continue reading (i.e.
-// compute the next offset), and is emitted as the tool's structured content.
+// The decoded terminal output is ALSO returned to the agent as a text content block; the
+// same text is duplicated here in Output so it is delivered regardless of whether a client
+// surfaces the text content block or only the structured content. The struct additionally
+// carries the positional metadata an agent needs to continue reading (i.e. compute the next
+// offset). This value is emitted as the tool's structured content.
 type MCPReadSessionOutputResp struct {
+	// Output the decoded terminal text (ANSI escape sequences removed). This is the same
+	// text returned in the tool result's text content block, duplicated here so clients
+	// that surface only structured content still receive it.
+	Output string `json:"output" jsonschema:"the decoded terminal text with ANSI escape sequences removed; the same text is also returned as the tool result's text content block"`
 	// ActualOffset the offset the returned data actually starts at. When the requested
 	// offset has already aged out of the ring buffer, the read is moved forward to the
 	// oldest byte still in the buffer, and this reports that position.
@@ -337,9 +348,15 @@ func mcpBuildEnumSchema[T ~string](values []T) *jsonschema.Schema {
 // rather than a bare string. Each type's members come from its Values() method, keeping this
 // map in lock-step with the const blocks in the models package.
 var mcpEnumTypeSchemas = map[reflect.Type]*jsonschema.Schema{
-	reflect.TypeFor[models.SessionStateENUMType]():          mcpBuildEnumSchema(models.SessionStateENUMType("").Values()),
-	reflect.TypeFor[models.SessionDriverTypeENUMType]():     mcpBuildEnumSchema(models.SessionDriverTypeENUMType("").Values()),
-	reflect.TypeFor[models.SessionRunnerModeTypeENUMType](): mcpBuildEnumSchema(models.SessionRunnerModeTypeENUMType("").Values()),
+	reflect.TypeFor[models.SessionStateENUMType](): mcpBuildEnumSchema(
+		models.SessionStateENUMType("").Values(),
+	),
+	reflect.TypeFor[models.SessionDriverTypeENUMType](): mcpBuildEnumSchema(
+		models.SessionDriverTypeENUMType("").Values(),
+	),
+	reflect.TypeFor[models.SessionRunnerModeTypeENUMType](): mcpBuildEnumSchema(
+		models.SessionRunnerModeTypeENUMType("").Values(),
+	),
 	reflect.TypeFor[models.SessionInputCommandTypeENUMType](): mcpBuildEnumSchema(
 		models.SessionInputCommandTypeENUMType("").Values(),
 	),
@@ -569,7 +586,7 @@ func (h MCPHandler) RegisterTools(server *mcp.Server) error {
 		h.registerStartSessionTool,
 		h.registerStopSessionTool,
 		// Session IO Tools
-		h.registerSubmitUserCommandTool,
+		h.registerSubmitUserInputTool,
 		h.registerReadSessionOutputChunkTool,
 		h.registerReadSessionOutputNewestTool,
 	}

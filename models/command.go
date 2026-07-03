@@ -40,7 +40,7 @@ func (SessionInputCommandTypeENUMType) Values() []SessionInputCommandTypeENUMTyp
 // SessionInputCommand session input command object
 type SessionInputCommand struct {
 	// Type session input command type
-	Type SessionInputCommandTypeENUMType `json:"type" validate:"required,session_input_cmd_type" jsonschema:"session input command type"`
+	Type SessionInputCommandTypeENUMType `json:"type" validate:"required,session_input_cmd_type" jsonschema:"session input command type, selecting how Content is interpreted. TEXT: write Content to STDIN verbatim as literal text (no escape interpretation); use this to type a command or any characters (e.g. Content \"ls -l\"). CTRL: send a single control character; Content is one ASCII letter and is folded into its control code (e.g. Content \"C\" sends CTRL+C / SIGINT, \"D\" sends CTRL+D / EOF, \"Z\" sends CTRL+Z). ENTER: press the Enter/Return key, sending a carriage return to submit the current line; Content is ignored. RAW: write arbitrary raw bytes to STDIN, given as Base64-encoded Content; use this for keystrokes that TEXT cannot express, such as arrow keys, function keys, or other ANSI escape sequences. To type text and submit it, send a TEXT command followed by an ENTER command."`
 
 	/*
 		Content command content if needed
@@ -55,7 +55,7 @@ type SessionInputCommand struct {
 		keyboard presses, including ANSI characters, escape sequences, and control
 		characters) in Base64 encoding.
 	*/
-	Content *string `json:"content,omitempty" jsonschema:"command content if needed. For TEXT type, the content is the text to write to STDIN. For CTRL type, the content is the control character (e.g. C for CTRL+C, etc.). For ENTER type, the content is ignored. For RAW type, the content is the raw input byte slice (direct capture of keyboard presses, including ANSI characters, escape sequences, and control characters) in Base64 encoding."`
+	Content *string `json:"content,omitempty" jsonschema:"command content if needed. For TEXT type, the content is the text to write to STDIN; required, but may be an empty string. For CTRL type, the content is the control character (e.g. C for CTRL+C, etc.); required, and must be exactly one ASCII letter (A-Z or a-z). For ENTER type, the content is ignored and may be omitted. For RAW type, the content is the raw input byte slice (direct capture of keyboard presses, including ANSI characters, escape sequences, and control characters) in Base64 encoding; required, and must be valid Base64, but may be an empty string."`
 }
 
 const (

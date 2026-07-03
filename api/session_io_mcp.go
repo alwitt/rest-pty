@@ -14,28 +14,30 @@ import (
 // raw escape sequences are noise (see the removed strip_ansi tool parameter).
 const mcpStripANSI = true
 
-// registerSubmitUserCommandTool register the submit-user-command tool. Only permitted on READY
+// registerSubmitUserInputTool register the submit-user-input tool. Only permitted on READY
 // sessions.
-func (h MCPHandler) registerSubmitUserCommandTool(server *mcp.Server) error {
-	toolName := "submit_user_command"
+func (h MCPHandler) registerSubmitUserInputTool(server *mcp.Server) error {
+	toolName := "submit_user_input"
 	toolDescription :=
-		"Submit a batch of input commands to a READY session's runner and wait for it to " +
-			"acknowledge them. Commands are processed in order (e.g. type text, then press ENTER). " +
-			"This does not return the resulting output; read the session output separately."
+		"Submit a batch of input events (keystrokes) to a READY session's runner and wait for " +
+			"it to acknowledge them. Inputs are processed in order (e.g. type text, then press " +
+			"ENTER). These are fed to the session's running process as STDIN, not the command the " +
+			"session is defined to run. This does not return the resulting output; read the " +
+			"session output separately."
 
 	return mcpAddTool(
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
-			ctx context.Context, _ *mcp.CallToolRequest, in MCPSubmitUserCommandParams,
+			ctx context.Context, _ *mcp.CallToolRequest, in MCPSubmitUserInputParams,
 		) (*mcp.CallToolResult, any, error) {
-			if err := h.io.SubmitUserCommandToSession(ctx, in.SessionName, in.Commands); err != nil {
-				exitErr := goutils.NewRuntimeError("Failed to submit user command to session", err, true)
+			if err := h.io.SubmitUserCommandToSession(ctx, in.SessionName, in.Inputs); err != nil {
+				exitErr := goutils.NewRuntimeError("Failed to submit user input to session", err, true)
 				return nil, nil, exitErr
 			}
 
 			return mcpTextResult(fmt.Sprintf(
-				"submitted %d command(s) to session '%s'", len(in.Commands), in.SessionName,
+				"submitted %d input(s) to session '%s'", len(in.Inputs), in.SessionName,
 			)), nil, nil
 		},
 	)
@@ -50,8 +52,9 @@ func (h MCPHandler) registerReadSessionOutputChunkTool(server *mcp.Server) error
 		"Read a chunk of a session's output starting at the given stream offset. The output ring " +
 			"buffer only retains the most recent bytes, so if the requested offset has aged out the " +
 			"read is moved forward to the oldest byte still buffered; the returned actual_offset " +
-			"reports where the data actually starts. The returned output is the decoded terminal text " +
-			"with ANSI escape sequences removed. Use actual_offset + read to compute the next offset."
+			"reports where the data actually starts. The decoded terminal text (ANSI escape " +
+			"sequences removed) is returned both as the result's text content and in the structured " +
+			"result's output field. Use actual_offset + read to compute the next offset."
 
 	return mcpAddTool(
 		server,
@@ -80,8 +83,9 @@ func (h MCPHandler) registerReadSessionOutputNewestTool(server *mcp.Server) erro
 	toolDescription :=
 		"Read the most recently written bytes of a session's output, up to the given limit. No " +
 			"offset is given; the read is anchored to the end of the stream. The returned " +
-			"actual_offset reports the stream position the returned data starts at. The returned " +
-			"output is the decoded terminal text with ANSI escape sequences removed."
+			"actual_offset reports the stream position the returned data starts at. The decoded " +
+			"terminal text (ANSI escape sequences removed) is returned both as the result's text " +
+			"content and in the structured result's output field."
 
 	return mcpAddTool(
 		server,
@@ -101,15 +105,20 @@ func (h MCPHandler) registerReadSessionOutputNewestTool(server *mcp.Server) erro
 }
 
 // outputReadResult build the tool result for an output read. The decoded terminal text is placed
-// in the result's Content as a text block; the positional metadata (actual offset and bytes read)
-// is returned as the typed output value, which the SDK marshals into StructuredContent. Providing
-// Content explicitly is what keeps the agent-facing text as the actual terminal output: the SDK
-// only falls back to serializing the structured value into a text block when Content is unset.
+// in the result's Content as a text block AND duplicated in the structured value's Output field.
+// The positional metadata (actual offset and bytes read) is returned alongside it as the typed
+// output value, which the SDK marshals into StructuredContent. Providing Content explicitly keeps
+// the agent-facing text as the actual terminal output (the SDK only falls back to serializing the
+// structured value into a text block when Content is unset); duplicating the text into Output means
+// clients that surface only structured content still receive it.
 func outputReadResult(read SessionOutputRead) (
 	*mcp.CallToolResult, MCPReadSessionOutputResp, error,
 ) {
+	text := string(read.Data)
 	result := &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: string(read.Data)}},
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}
-	return result, MCPReadSessionOutputResp{ActualOffset: read.ActualOffset, Read: read.Read}, nil
+	return result, MCPReadSessionOutputResp{
+		Output: text, ActualOffset: read.ActualOffset, Read: read.Read,
+	}, nil
 }

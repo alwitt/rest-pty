@@ -13,8 +13,8 @@ import (
 
 // SessionCommand the command being executed by the session
 type SessionCommand struct {
-	// Command the command being ran
-	Command string `json:"cmd" validate:"required" jsonschema:"the command being ran"`
+	// Command the command being run
+	Command string `json:"cmd" validate:"required" jsonschema:"the command being run"`
 	// Arguments the arguments passed to the command
 	Arguments []string `json:"args" jsonschema:"the arguments passed to the command"`
 }
@@ -238,7 +238,7 @@ type ContainerTmpfsMount struct {
 	// Path the directory within the container to back with a writable tmpfs
 	Path string `json:"path" validate:"required" jsonschema:"the directory within the container to back with a writable tmpfs"`
 	// TmpfsSize size of the tmpfs mount in bytes; defaults to DefaultContainerTmpfsSize when 0
-	TmpfsSize int64 `json:"tmpfs_size,omitempty" validate:"omitempty,gt=0" jsonschema:"size of the tmpfs mount in bytes; defaults to 67108864 (64 MiB) when 0"`
+	TmpfsSize int64 `json:"tmpfs_size,omitempty" validate:"omitempty,gt=0" jsonschema:"size of the tmpfs mount in bytes; when set must be > 0; defaults to 67108864 (64 MiB) when 0 or omitted"`
 }
 
 // Size resolve TmpfsSize, defaulting when unset
@@ -255,11 +255,11 @@ type ContainerPortPublish struct {
 	// ContainerPort the port the session command listens on inside the container
 	ContainerPort uint16 `json:"container_port" validate:"required" jsonschema:"the port the session command listens on inside the container"`
 	// Protocol the port protocol; defaults to DefaultContainerPortProtocol when empty
-	Protocol string `json:"protocol,omitempty" validate:"omitempty,oneof=tcp udp" jsonschema:"the port protocol; defaults to tcp when empty"`
+	Protocol string `json:"protocol,omitempty" validate:"omitempty,oneof=tcp udp" jsonschema:"the port protocol; when set must be one of 'tcp' or 'udp'; defaults to tcp when empty"`
 	// HostPort the host port to bind; 0 requests an ephemeral host port
 	HostPort uint16 `json:"host_port,omitempty" jsonschema:"the host port to bind; 0 requests an ephemeral host port"`
 	// HostIP the host interface to bind to; defaults to DefaultContainerPublishHostIP when empty
-	HostIP string `json:"host_ip,omitempty" validate:"omitempty,ip" jsonschema:"the host interface to bind to; defaults to 127.0.0.1 when empty"`
+	HostIP string `json:"host_ip,omitempty" validate:"omitempty,ip" jsonschema:"the host interface to bind to; when set must be a valid IP address; defaults to 127.0.0.1 when empty"`
 }
 
 // ResolvedProtocol resolve Protocol, defaulting when empty
@@ -283,7 +283,7 @@ type ContainerExtraHost struct {
 	// Host the hostname to map
 	Host string `json:"host" validate:"required" jsonschema:"the hostname to map"`
 	// Address the IP address the hostname resolves to
-	Address string `json:"address" validate:"required,ip" jsonschema:"the IP address the hostname resolves to"`
+	Address string `json:"address" validate:"required,ip" jsonschema:"the IP address the hostname resolves to; must be a valid IP address"`
 }
 
 // ContainerEnvVar an environment variable set on the container process
