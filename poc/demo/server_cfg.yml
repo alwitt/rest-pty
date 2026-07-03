@@ -5,6 +5,8 @@ metrics:
     appPort: 3001
 
 api:
+  apis:
+    enableMCP: true
   service:
     listenOn: 127.0.0.1
     appPort: 38281

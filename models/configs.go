@@ -60,6 +60,8 @@ type APIConfig struct {
 	Endpoint EndpointConfig `mapstructure:"endPoint" json:"endPoint" validate:"required,dive"`
 	// RequestLogging sets API request logging parameters
 	RequestLogging HTTPRequestLogging `mapstructure:"requestLogging" json:"requestLogging" validate:"required"`
+	// EnableMCP enable the MCP endpoint
+	EnableMCP bool `mapstructure:"enableMCP" json:"enableMCP"`
 }
 
 // APIServerConfig defines HTTP API / server parameters
@@ -164,6 +166,7 @@ func InstallDefaultServerConfigValues() {
 	viper.SetDefault("api.apis.requestLogging.skipHeaders", []string{
 		"WWW-Authenticate", "Authorization", "Proxy-Authenticate", "Proxy-Authorization",
 	})
+	viper.SetDefault("api.apis.enableMCP", false)
 
 	// Default REDIS config
 	viper.SetDefault("redis.host", "127.0.0.1")

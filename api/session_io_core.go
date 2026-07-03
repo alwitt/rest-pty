@@ -1,4 +1,5 @@
-package api
+// Package api - application REST API
+package api //revive:disable-line:var-naming
 
 import (
 	"context"

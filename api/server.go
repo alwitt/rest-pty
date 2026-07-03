@@ -12,6 +12,7 @@ import (
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/gorilla/mux"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/cors"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -155,6 +156,35 @@ func BuildHTTPServer(
 	_ = registerPathPrefix(perSessionOutputRouter, "/tail", map[string]http.HandlerFunc{
 		"get": ioAPI.TailSessionOutput,
 	})
+
+	// --------------------------------------------------------------------------------
+	// MCP Endpoint
+
+	if httpCfg.APIs.EnableMCP {
+		// Build up the MCP end point handler
+		mcpAPI, err := NewSessionMCPHandler(
+			persistence, manager, redisClient, httpCfg.APIs.RequestLogging,
+		)
+		if err != nil {
+			return nil, goutils.NewRuntimeError("Failed to define MCP API handler", err, true)
+		}
+
+		// Build MCP server
+		mcpServer := mcp.NewServer(&mcp.Implementation{Name: "rest-pty", Version: "0.2.0"}, nil)
+		if err := mcpAPI.RegisterTools(mcpServer); err != nil {
+			return nil, goutils.NewRuntimeError("Failed to register MCP tools", err, true)
+		}
+
+		// Install logging middleware
+		mcpServer.AddReceivingMiddleware(mcpAPI.LoggingMiddleware)
+
+		handler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
+			return mcpServer
+		}, &mcp.StreamableHTTPOptions{Stateless: true})
+
+		// Install MCP server
+		_ = v1Router.Path("/mcp").Handler(handler)
+	}
 
 	// --------------------------------------------------------------------------------
 	// Middleware

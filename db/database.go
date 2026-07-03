@@ -12,23 +12,25 @@ import (
 
 // CommonListEntryQueryFilter common query filter when listing data entries
 type CommonListEntryQueryFilter struct {
-	Limit  *int `validate:"omitempty,gte=1"`
-	Offset *int `validate:"omitempty,gte=0"`
+	// Limit max number of entries to return
+	Limit *int `json:"limit,omitempty" validate:"omitempty,gte=1" jsonschema:"max number of entries to return"`
+	// Offset number of leading entries to skip
+	Offset *int `json:"offset,omitempty" validate:"omitempty,gte=0" jsonschema:"number of leading entries to skip"`
 }
 
 // SessionQueryFilter list session query filter
 type SessionQueryFilter struct {
 	CommonListEntryQueryFilter
 	// SimilarName filter for session whose name is similar to this, case insensitive.
-	SimilarName *string
+	SimilarName *string `json:"name,omitempty" jsonschema:"filter for session whose name is similar to this, case insensitive"`
 	// TargetDriverType fetch session using this driver type
-	TargetDriverType []models.SessionDriverTypeENUMType `validate:"omitempty,dive,session_driver_type"`
+	TargetDriverType []models.SessionDriverTypeENUMType `json:"driver,omitempty" validate:"omitempty,dive,session_driver_type" jsonschema:"fetch session using this driver type"`
 	// TargetStates fetch session in this state
-	TargetStates []models.SessionStateENUMType `validate:"omitempty,dive,session_state_type"`
+	TargetStates []models.SessionStateENUMType `json:"state,omitempty" validate:"omitempty,dive,session_state_type" jsonschema:"fetch session in this state"`
 	// OrderByName whether to order the returns by name
-	OrderByName bool
+	OrderByName bool `json:"order_by_name,omitempty" jsonschema:"whether to order the returns by name"`
 	// OrderDirection ordering direction `asc` or `desc`
-	OrderDirection *string `validate:"omitempty,oneof=asc desc ASC DESC"`
+	OrderDirection *string `json:"order_dir,omitempty" validate:"omitempty,oneof=asc desc ASC DESC" jsonschema:"ordering direction asc or desc"`
 }
 
 // Database the database handle to interacting with the data base

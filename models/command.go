@@ -27,10 +27,20 @@ const (
 	SessionInputCommandTypeRaw SessionInputCommandTypeENUMType = "RAW"
 )
 
+// Values all valid SessionInputCommandTypeENUMType values
+func (SessionInputCommandTypeENUMType) Values() []SessionInputCommandTypeENUMType {
+	return []SessionInputCommandTypeENUMType{
+		SessionInputCommandTypeText,
+		SessionInputCommandTypeCTRL,
+		SessionInputCommandTypeCR,
+		SessionInputCommandTypeRaw,
+	}
+}
+
 // SessionInputCommand session input command object
 type SessionInputCommand struct {
 	// Type session input command type
-	Type SessionInputCommandTypeENUMType `json:"type" validate:"required,session_input_cmd_type"`
+	Type SessionInputCommandTypeENUMType `json:"type" validate:"required,session_input_cmd_type" jsonschema:"session input command type"`
 
 	/*
 		Content command content if needed
@@ -45,7 +55,7 @@ type SessionInputCommand struct {
 		keyboard presses, including ANSI characters, escape sequences, and control
 		characters) in Base64 encoding.
 	*/
-	Content *string `json:"content,omitempty"`
+	Content *string `json:"content,omitempty" jsonschema:"command content if needed. For TEXT type, the content is the text to write to STDIN. For CTRL type, the content is the control character (e.g. C for CTRL+C, etc.). For ENTER type, the content is ignored. For RAW type, the content is the raw input byte slice (direct capture of keyboard presses, including ANSI characters, escape sequences, and control characters) in Base64 encoding."`
 }
 
 const (
