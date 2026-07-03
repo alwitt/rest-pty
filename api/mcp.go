@@ -355,7 +355,63 @@ func mcpInputSchemaFor[In any]() (*jsonschema.Schema, error) {
 			"failed to infer input schema for %s: %w", reflect.TypeFor[In]().Name(), err,
 		)
 	}
+	mcpDenullRequired(schema)
 	return schema, nil
+}
+
+// mcpDenullRequired collapse the "null" member out of the type of every REQUIRED property whose
+// type was inferred as a two-member ["null", X] union, recursively through the schema tree.
+//
+// jsonschema-go renders a Go slice or pointer field as a nullable type union (e.g. a []T becomes
+// Types: ["null", "array"]) because a nil value is representable. For a field carrying
+// validate:"required" that union is misleading: the field can never legitimately be null. Beyond
+// reading cleanly to an agent, a plain single type also avoids the type-array form that weaker MCP
+// client schema converters mishandle or drop, which can leave the agent guessing a tool's shape.
+func mcpDenullRequired(schema *jsonschema.Schema) {
+	if schema == nil {
+		return
+	}
+
+	required := make(map[string]struct{}, len(schema.Required))
+	for _, name := range schema.Required {
+		required[name] = struct{}{}
+	}
+
+	for name, prop := range schema.Properties {
+		if _, isRequired := required[name]; isRequired {
+			mcpDenullType(prop)
+		}
+	}
+
+	// Recurse into nested schemas so required properties at any depth are covered.
+	for _, prop := range schema.Properties {
+		mcpDenullRequired(prop)
+	}
+	mcpDenullRequired(schema.Items)
+}
+
+// mcpDenullType collapse a two-member ["null", X] type union on the given schema down to the
+// single non-null type X. Any other type shape is left untouched.
+func mcpDenullType(schema *jsonschema.Schema) {
+	if schema == nil || len(schema.Types) != 2 {
+		return
+	}
+
+	var nonNull string
+	sawNull := false
+	for _, t := range schema.Types {
+		if t == "null" {
+			sawNull = true
+			continue
+		}
+		nonNull = t
+	}
+	if !sawNull || nonNull == "" {
+		return
+	}
+
+	schema.Types = nil
+	schema.Type = nonNull
 }
 
 // ======================================================================================
