@@ -46,6 +46,8 @@ type HTTPRequestLogging struct {
 	RequestIDHeader string `mapstructure:"requestIDHeader" json:"requestIDHeader"`
 	// DoNotLogHeaders is the list of headers to not include in logging metadata
 	DoNotLogHeaders []string `mapstructure:"skipHeaders" json:"skipHeaders"`
+	// LogRequestPayload whether to log request payload
+	LogRequestPayload bool `mapstructure:"logRequestPayload" json:"logRequestPayload"`
 }
 
 // EndpointConfig defines API endpoint config
@@ -166,6 +168,7 @@ func InstallDefaultServerConfigValues() {
 	viper.SetDefault("api.apis.requestLogging.skipHeaders", []string{
 		"WWW-Authenticate", "Authorization", "Proxy-Authenticate", "Proxy-Authorization",
 	})
+	viper.SetDefault("api.apis.requestLogging.logRequestPayload", false)
 	viper.SetDefault("api.apis.enableMCP", false)
 
 	// Default REDIS config

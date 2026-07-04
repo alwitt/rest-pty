@@ -59,8 +59,9 @@ func NewSessionIOHandler(
 				}
 				return result
 			}(),
-			LogLevel:      logConfig.LogLevel,
-			MetricsHelper: metrics,
+			LogLevel:          logConfig.LogLevel,
+			LogRequestPayload: logConfig.LogRequestPayload,
+			MetricsHelper:     metrics,
 		},
 		core: SessionIOCore{
 			validate:    validator.New(),

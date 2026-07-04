@@ -14,8 +14,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/cors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 /*
@@ -44,8 +42,11 @@ func BuildMetricsCollectionServer(
 		WriteTimeout: time.Second * time.Duration(httpCfg.Timeouts.WriteTimeout),
 		ReadTimeout:  time.Second * time.Duration(httpCfg.Timeouts.ReadTimeout),
 		IdleTimeout:  time.Second * time.Duration(httpCfg.Timeouts.IdleTimeout),
-		Handler:      h2c.NewHandler(router, &http2.Server{}),
+		Handler:      router,
 	}
+	httpSrv.Protocols = new(http.Protocols)
+	httpSrv.Protocols.SetHTTP1(true)
+	httpSrv.Protocols.SetUnencryptedHTTP2(true)
 
 	return httpSrv
 }
@@ -190,7 +191,7 @@ func BuildHTTPServer(
 	// Middleware
 
 	v1Router.Use(func(next http.Handler) http.Handler {
-		return managerAPI.LoggingMiddleware(next.ServeHTTP)
+		return managerAPI.LoggingMiddleware(managerAPI.RequestPayloadDumpMiddleware(next.ServeHTTP))
 	})
 	livenessRouter.Use(func(next http.Handler) http.Handler {
 		return livenessAPI.LoggingMiddleware(next.ServeHTTP)
@@ -216,8 +217,11 @@ func BuildHTTPServer(
 		WriteTimeout: time.Second * time.Duration(httpCfg.Server.Timeouts.WriteTimeout),
 		ReadTimeout:  time.Second * time.Duration(httpCfg.Server.Timeouts.ReadTimeout),
 		IdleTimeout:  time.Second * time.Duration(httpCfg.Server.Timeouts.IdleTimeout),
-		Handler:      h2c.NewHandler(corsWrapper.Handler(router), &http2.Server{}),
+		Handler:      corsWrapper.Handler(router),
 	}
+	httpSrv.Protocols = new(http.Protocols)
+	httpSrv.Protocols.SetHTTP1(true)
+	httpSrv.Protocols.SetUnencryptedHTTP2(true)
 
 	return httpSrv, nil
 }
