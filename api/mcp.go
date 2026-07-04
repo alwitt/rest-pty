@@ -333,6 +333,15 @@ type MCPReadSessionOutputResp struct {
 // we build the input schema explicitly for tools carrying ENUM fields, supplying a per-type
 // schema (with the Enum populated from each type's Values() method) via ForOptions.TypeSchemas.
 
+// Enum is the constraint satisfied by a string-backed ENUM type that can enumerate its own
+// members via a Values() method. MCPInstallEnumSchema uses it to register an enumerated schema
+// for the type without the caller having to spell out the member list.
+type Enum[T ~string] interface {
+	~string
+	// Values returns the complete set of permitted members for the ENUM type.
+	Values() []T
+}
+
 // mcpBuildEnumSchema build a string JSON schema whose enum is populated from the
 // given ENUM values.
 func mcpBuildEnumSchema[T ~string](values []T) *jsonschema.Schema {
@@ -343,30 +352,24 @@ func mcpBuildEnumSchema[T ~string](values []T) *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "string", Enum: enum}
 }
 
-// mcpEnumTypeSchemas the per-type schemas for every models ENUM that can appear in a tool's
-// input, keyed by Go type. Handed to jsonschema-go so ENUM fields emit a proper enumeration
-// rather than a bare string. Each type's members come from its Values() method, keeping this
-// map in lock-step with the const blocks in the models package.
-var mcpEnumTypeSchemas = map[reflect.Type]*jsonschema.Schema{
-	reflect.TypeFor[models.SessionStateENUMType](): mcpBuildEnumSchema(
-		models.SessionStateENUMType("").Values(),
-	),
-	reflect.TypeFor[models.SessionDriverTypeENUMType](): mcpBuildEnumSchema(
-		models.SessionDriverTypeENUMType("").Values(),
-	),
-	reflect.TypeFor[models.SessionRunnerModeTypeENUMType](): mcpBuildEnumSchema(
-		models.SessionRunnerModeTypeENUMType("").Values(),
-	),
-	reflect.TypeFor[models.SessionInputCommandTypeENUMType](): mcpBuildEnumSchema(
-		models.SessionInputCommandTypeENUMType("").Values(),
-	),
+// MCPInstallEnumSchema register the enumerated JSON schema for ENUM type T against the handler's
+// per-type schema table, so any tool input carrying a field of type T advertises T's permitted
+// members rather than a bare string. The member list is taken from T's Values() method, keeping
+// the registration in lock-step with the const block that defines the type.
+//
+// This is a generic function rather than a method because Go methods cannot introduce their own
+// type parameters.
+func MCPInstallEnumSchema[T Enum[T]](h *MCPHandler) {
+	var zero T
+	h.enumTypeSchemas[reflect.TypeFor[T]()] = mcpBuildEnumSchema(zero.Values())
 }
 
 // mcpInputSchemaFor build the input JSON schema for tool parameter type In, resolving any ENUM
-// fields to their enumerated schemas. The result is assigned to Tool.InputSchema so the SDK
-// uses it verbatim instead of inferring a schema that would omit the ENUM values.
-func mcpInputSchemaFor[In any]() (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[In](&jsonschema.ForOptions{TypeSchemas: mcpEnumTypeSchemas})
+// fields to their enumerated schemas via the handler's registered per-type schema table. The
+// result is assigned to Tool.InputSchema so the SDK uses it verbatim instead of inferring a
+// schema that would omit the ENUM values.
+func mcpInputSchemaFor[In any](h *MCPHandler) (*jsonschema.Schema, error) {
+	schema, err := jsonschema.For[In](&jsonschema.ForOptions{TypeSchemas: h.enumTypeSchemas})
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to infer input schema for %s: %w", reflect.TypeFor[In]().Name(), err,
@@ -434,13 +437,25 @@ func mcpDenullType(schema *jsonschema.Schema) {
 // ======================================================================================
 // Helper functions
 
-// mcpAddTool register a typed tool, building its input schema with ENUM support. It is a thin
-// wrapper over mcp.AddTool that pre-populates Tool.InputSchema (see inputSchemaFor); passing a
-// Tool with a nil InputSchema to mcp.AddTool would infer a schema without ENUM enumerations.
-func mcpAddTool[In, Out any](
-	server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out],
+/*
+MCPAddTool register a typed tool, building its input schema with ENUM support. It is a thin
+wrapper over mcp.AddTool that pre-populates Tool.InputSchema (see mcpInputSchemaFor); passing a
+Tool with a nil InputSchema to mcp.AddTool would infer a schema without ENUM enumerations.
+
+This is a generic function rather than a method because Go methods cannot introduce their own
+type parameters.
+
+	@param h *MCPHandler - the handler whose registered ENUM schemas resolve the tool's input schema
+	@param server *mcp.Server - target MCP server to register the tool against
+	@param tool *mcp.Tool - the tool definition; its InputSchema is populated in place
+	@param handler mcp.ToolHandlerFor[In, Out] - the tool call handler for input type In and
+	    output type Out
+	@returns error if the input schema for In could not be built
+*/
+func MCPAddTool[In, Out any](
+	h *MCPHandler, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out],
 ) error {
-	schema, err := mcpInputSchemaFor[In]()
+	schema, err := mcpInputSchemaFor[In](h)
 	if err != nil {
 		return err
 	}
@@ -512,6 +527,11 @@ type MCPHandler struct {
 
 	LogLevel goutils.HTTPRequestLogLevel
 
+	// enumTypeSchemas the per-Go-type enumerated JSON schemas handed to jsonschema-go so ENUM
+	// fields in a tool's input emit a proper enumeration rather than a bare string. Populated
+	// once at construction via MCPInstallEnumSchema and read-only thereafter.
+	enumTypeSchemas map[reflect.Type]*jsonschema.Schema
+
 	// manage transport-agnostic session management logic
 	manage SessionManagerCore
 
@@ -541,6 +561,7 @@ func NewSessionMCPHandler(
 				modifyLogMetadataByMCPRequestParam,
 			},
 		},
+		enumTypeSchemas: map[reflect.Type]*jsonschema.Schema{},
 		manage: SessionManagerCore{
 			validate:    validator.New(),
 			persistence: persistence,
@@ -553,6 +574,14 @@ func NewSessionMCPHandler(
 		},
 		LogLevel: logConfig.LogLevel,
 	}
+
+	// Register the enumerated schema for every models ENUM that can appear in a tool's input, so
+	// the tool schemas advertise the permitted members rather than a bare string. Keep this list
+	// in lock-step with the const blocks in the models package.
+	MCPInstallEnumSchema[models.SessionStateENUMType](&handler)
+	MCPInstallEnumSchema[models.SessionDriverTypeENUMType](&handler)
+	MCPInstallEnumSchema[models.SessionRunnerModeTypeENUMType](&handler)
+	MCPInstallEnumSchema[models.SessionInputCommandTypeENUMType](&handler)
 
 	if err := models.RegisterWithValidator(handler.manage.validate); err != nil {
 		return handler, goutils.NewRuntimeError(
