@@ -162,6 +162,7 @@ api:
       logLevel: warn
       healthLogLevel: debug
       requestIDHeader: X-Request-ID
+    enableMCP: false           # expose the MCP endpoint (see "MCP API")
 
 # Redis connection (used for session I/O buffers)
 redis:
@@ -264,6 +265,74 @@ To page through the full scrollback instead, use `output/chunk?offset=<n>&limit=
 curl -X POST   http://localhost:38281/v1/sessions/demo/stop
 curl -X DELETE http://localhost:38281/v1/sessions/demo
 ```
+
+## MCP API
+
+Alongside the REST API, `rest-pty` can expose the session surface to AI agents as
+[Model Context Protocol](https://modelcontextprotocol.io) tools. This lets an agent define,
+start, drive, and read back sandboxed terminal sessions using the same core the REST API
+uses.
+
+### Enabling it
+
+The MCP endpoint is **disabled by default**. Turn it on with `enableMCP` under `api.apis`:
+
+```yaml
+api:
+  apis:
+    enableMCP: true
+```
+
+Once enabled, an MCP server (streamable HTTP transport, stateless) is mounted at
+**`POST /v1/mcp`**, relative to the configured `pathPrefix`.
+
+### Tools
+
+The endpoint registers the following tools. Their input schemas mirror the REST DTOs (and
+advertise the same enumerated values and validation rules).
+
+**Session management**
+
+| Tool | Purpose |
+|------|---------|
+| `define_new_session` | Define a new session (always docker-backed and hardened — see below) |
+| `list_sessions` | List sessions, optionally filtered by name, driver, or state |
+| `get_session` | Fetch a single session by name |
+| `update_session_output_buffer_capacity` | Change an IDLE session's scrollback capacity (clears buffered output) |
+| `update_session_command` | Change the command an IDLE session runs |
+| `update_session_name` | Rename a session |
+| `update_session_description` | Change (or clear) a session's description |
+| `delete_session` | Delete an IDLE session |
+| `start_session` | Start a session (`IDLE` → `READY`), synchronously |
+| `stop_session` | Stop a session (`READY` → `IDLE`), synchronously |
+
+**Session IO**
+
+| Tool | Purpose |
+|------|---------|
+| `submit_user_input` | Submit a batch of keystroke input events to a READY session's STDIN |
+| `read_session_output_chunk` | Read output from a given stream offset |
+| `read_session_output_newest` | Read the most recently written output bytes |
+
+### How it differs from the REST API
+
+The MCP surface is a deliberately narrowed, agent-safe projection of the REST API:
+
+- **Docker-only, hardened sessions.** `define_new_session` fixes the driver to `DOCKER`;
+  there is no driver-type selection and no raw driver metadata. Only a restricted set of
+  docker settings is exposed (image, TTY size, working dir, writable dirs, network mode,
+  published ports, extra hosts, environment). Host bind-mounts, added Linux capabilities,
+  and the hardening toggles are **not** exposed and keep their hardened defaults. If a
+  session needs more, an operator can adjust it out-of-band via the REST API.
+- **Always synchronous.** There is no equivalent of the REST `block` query parameter; each
+  tool call is a discrete request/response, so operations always complete before returning.
+- **`inputs`, not `command`.** `submit_user_input` takes `inputs` — keystroke-level input
+  events fed to the running process's STDIN — named distinctly from the `{cmd, args}`
+  command a session is *defined* to run, to keep the two from being conflated.
+- **ANSI-stripped, structured output reads.** The output-read tools always strip ANSI
+  escape sequences and return the decoded text both as a text content block and as
+  structured fields (`output`, `actual_offset`, `read`) so an agent can advance its read
+  offset. There is no MCP equivalent of the SSE `tail` stream.
 
 ## Docker driver
 
