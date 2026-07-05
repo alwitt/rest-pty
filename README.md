@@ -1,6 +1,6 @@
 # rest-pty
 
-> Manage long-running terminal programs over a REST API.
+> Terminals as a service — drive PTY sessions over REST and MCP.
 
 [![CICD](https://github.com/alwitt/rest-pty/actions/workflows/cicd.yaml/badge.svg)](https://github.com/alwitt/rest-pty/actions/workflows/cicd.yaml)
 [![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)](https://go.dev/)
