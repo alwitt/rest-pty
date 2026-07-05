@@ -98,7 +98,9 @@ func (d *ptyDriver) Setup() error {
 
 	{
 		logTags := d.GetLogTagsForContext(d.workingCtx)
-		log.WithFields(logTags).Infof("Started PTY for %s", cmdDisplayStr)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Infof("Started PTY for %s", cmdDisplayStr)
 	}
 
 	// Setup the session screen size

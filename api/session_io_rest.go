@@ -107,7 +107,10 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -119,7 +122,7 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 
 	if r.Body == nil {
 		msg := "No payload provided containing user commands"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -129,21 +132,24 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 	var params UserCommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		msg := "Unable to parse user commands from request"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Request body close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
 		}
 	}()
 
 	// Validate user commands
 	if err := h.core.validate.Struct(&params); err != nil {
 		msg := "User commands parameters not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
@@ -152,7 +158,7 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 	{
 		t, _ := json.Marshal(&params)
 		log.
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			WithField("user-commands", string(t)).
 			Debug("Submitting user commands to session")
 	}
@@ -168,17 +174,17 @@ func (h SessionIOHandler) SubmitUserCommandToSession(w http.ResponseWriter, r *h
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		case errors.As(err, &notReady):
 			msg := "Session '" + sessionName + "' is not ready to accept user commands"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		default:
 			msg := "Failed to submit commands to session '" + sessionName + "' runner"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}
@@ -233,7 +239,10 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -249,7 +258,7 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	rawOffset := query.Get("offset")
 	if rawOffset == "" {
 		msg := "Query parameter 'offset' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -257,14 +266,14 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	offset, err := strconv.ParseInt(rawOffset, 10, 64)
 	if err != nil {
 		msg := "Query parameter 'offset' must be an integer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	if offset < 0 {
 		msg := "Query parameter 'offset' must not be negative"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -274,7 +283,7 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	rawLimit := query.Get("limit")
 	if rawLimit == "" {
 		msg := "Query parameter 'limit' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -282,14 +291,14 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 	limit, err := strconv.Atoi(rawLimit)
 	if err != nil {
 		msg := "Query parameter 'limit' must be an integer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	if limit < 1 {
 		msg := "Query parameter 'limit' must be at least 1"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -301,7 +310,7 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 		stripANSI, err = strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Query parameter 'strip_ansi' must be a boolean"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -318,13 +327,13 @@ func (h SessionIOHandler) ReadSessionOutputChunk(w http.ResponseWriter, r *http.
 		var unknownSession goutils.NotFoundError
 		if errors.As(err, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
 		}
 		msg := "Failed to read session '" + sessionName + "' output"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
@@ -369,7 +378,10 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -385,7 +397,7 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 	rawLimit := query.Get("limit")
 	if rawLimit == "" {
 		msg := "Query parameter 'limit' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -393,14 +405,14 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 	limit, err := strconv.Atoi(rawLimit)
 	if err != nil {
 		msg := "Query parameter 'limit' must be an integer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	if limit < 1 {
 		msg := "Query parameter 'limit' must be at least 1"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -412,7 +424,7 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 		stripANSI, err = strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Query parameter 'strip_ansi' must be a boolean"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -427,13 +439,13 @@ func (h SessionIOHandler) ReadSessionOutputNewest(w http.ResponseWriter, r *http
 		var unknownSession goutils.NotFoundError
 		if errors.As(err, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
 		}
 		msg := "Failed to read session '" + sessionName + "' output"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
@@ -491,7 +503,10 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 		if err := h.WriteRESTResponse(
 			w, code, h.GetStdRESTErrorMsg(r.Context(), code, msg, detail), nil,
 		); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}
 
@@ -504,20 +519,20 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	rawOffset := query.Get("offset")
 	if rawOffset == "" {
 		msg := "Query parameter 'offset' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		writeError(http.StatusBadRequest, msg, msg)
 		return
 	}
 	offset, err := strconv.ParseInt(rawOffset, 10, 64)
 	if err != nil {
 		msg := "Query parameter 'offset' must be an integer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		writeError(http.StatusBadRequest, msg, err.Error())
 		return
 	}
 	if offset < 0 {
 		msg := "Query parameter 'offset' must not be negative"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		writeError(http.StatusBadRequest, msg, msg)
 		return
 	}
@@ -528,13 +543,13 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			msg := "Query parameter 'poll_period_msec' must be an integer"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			writeError(http.StatusBadRequest, msg, err.Error())
 			return
 		}
 		if parsed < 1 {
 			msg := "Query parameter 'poll_period_msec' must be at least 1"
-			log.WithFields(logTags).Error(msg)
+			log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			writeError(http.StatusBadRequest, msg, msg)
 			return
 		}
@@ -547,7 +562,7 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Query parameter 'strip_ansi' must be a boolean"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			writeError(http.StatusBadRequest, msg, err.Error())
 			return
 		}
@@ -559,7 +574,7 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		msg := "Streaming unsupported by this connection"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		writeError(http.StatusInternalServerError, msg, msg)
 		return
 	}
@@ -572,12 +587,12 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 		var unknownSession goutils.NotFoundError
 		if errors.As(err, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			writeError(http.StatusNotFound, msg, err.Error())
 			return
 		}
 		msg := "Failed to get session '" + sessionName + "' output buffer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		writeError(http.StatusInternalServerError, msg, err.Error())
 		return
 	}
@@ -587,7 +602,10 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	reader := buffer.AsReadWriteCloser(r.Context(), offset, pollPeriod)
 	defer func() {
 		if err := reader.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Output stream reader close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Output stream reader close error")
 		}
 	}()
 
@@ -600,9 +618,9 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	log.WithFields(logTags).Debug("Started session output tail stream")
+	log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Debug("Started session output tail stream")
 	defer func() {
-		log.WithFields(logTags).Debug("Ended session output tail stream")
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Debug("Ended session output tail stream")
 	}()
 
 	readBuf := make([]byte, tailStreamReadChunkSize)
@@ -616,7 +634,10 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 			encoded := base64.StdEncoding.EncodeToString(chunk)
 			if _, err := fmt.Fprintf(w, "event: output\ndata: %s\n\n", encoded); err != nil {
 				// The client connection is likely gone; stop streaming.
-				log.WithError(err).WithFields(logTags).Debug("Output stream write failed; ending stream")
+				log.
+					WithError(err).
+					WithFields(goutils.UpdateCodePositionInTags(logTags)).
+					Debug("Output stream write failed; ending stream")
 				return
 			}
 			flusher.Flush()
@@ -624,7 +645,10 @@ func (h SessionIOHandler) TailSessionOutput(w http.ResponseWriter, r *http.Reque
 		if readErr != nil {
 			// io.EOF is the clean shutdown signal (context cancelled / client disconnect).
 			if !errors.Is(readErr, io.EOF) {
-				log.WithError(readErr).WithFields(logTags).Error("Output stream read failure")
+				log.
+					WithError(readErr).
+					WithFields(goutils.UpdateCodePositionInTags(logTags)).
+					Error("Output stream read failure")
 			}
 			return
 		}

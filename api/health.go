@@ -70,7 +70,10 @@ func (h LivenessHandler) Alive(w http.ResponseWriter, r *http.Request) {
 	if err := h.WriteRESTResponse(
 		w, http.StatusOK, h.GetStdRESTSuccessMsg(r.Context()), nil,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Failed to form response")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Failed to form response")
 	}
 }
 
@@ -91,7 +94,10 @@ func (h LivenessHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 

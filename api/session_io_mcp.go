@@ -25,8 +25,8 @@ func (h MCPHandler) registerSubmitUserInputTool(server *mcp.Server) error {
 			"session is defined to run. This does not return the resulting output; read the " +
 			"session output separately."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -37,7 +37,7 @@ func (h MCPHandler) registerSubmitUserInputTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult(fmt.Sprintf(
+			return goutils.MCPTextResult(fmt.Sprintf(
 				"submitted %d input(s) to session '%s'", len(in.Inputs), in.SessionName,
 			)), nil, nil
 		},
@@ -57,8 +57,8 @@ func (h MCPHandler) registerReadSessionOutputChunkTool(server *mcp.Server) error
 			"sequences removed) is returned both as the result's text content and in the structured " +
 			"result's output field. Use actual_offset + read to compute the next offset."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -89,8 +89,8 @@ func (h MCPHandler) registerReadSessionOutputNewestTool(server *mcp.Server) erro
 			"terminal text (ANSI escape sequences removed) is returned both as the result's text " +
 			"content and in the structured result's output field."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(

@@ -2,11 +2,7 @@
 package api //revive:disable-line:var-naming
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/alwitt/goutils"
@@ -324,213 +320,11 @@ type MCPReadSessionOutputResp struct {
 }
 
 // ======================================================================================
-// ENUM schema support
-//
-// The go-playground "validate" tags on the parameter structs are enforced by the cores at
-// call time, but they do not describe the allowed ENUM values in the tool's JSON schema.
-// jsonschema-go infers an ENUM-typed (string) field as a bare "string" with no enumeration,
-// so the agent would not learn the permitted values from the schema alone. To advertise them
-// we build the input schema explicitly for tools carrying ENUM fields, supplying a per-type
-// schema (with the Enum populated from each type's Values() method) via ForOptions.TypeSchemas.
-
-// Enum is the constraint satisfied by a string-backed ENUM type that can enumerate its own
-// members via a Values() method. MCPInstallEnumSchema uses it to register an enumerated schema
-// for the type without the caller having to spell out the member list.
-type Enum[T ~string] interface {
-	~string
-	// Values returns the complete set of permitted members for the ENUM type.
-	Values() []T
-}
-
-// mcpBuildEnumSchema build a string JSON schema whose enum is populated from the
-// given ENUM values.
-func mcpBuildEnumSchema[T ~string](values []T) *jsonschema.Schema {
-	enum := make([]any, len(values))
-	for i, v := range values {
-		enum[i] = string(v)
-	}
-	return &jsonschema.Schema{Type: "string", Enum: enum}
-}
-
-// MCPInstallEnumSchema register the enumerated JSON schema for ENUM type T against the handler's
-// per-type schema table, so any tool input carrying a field of type T advertises T's permitted
-// members rather than a bare string. The member list is taken from T's Values() method, keeping
-// the registration in lock-step with the const block that defines the type.
-//
-// This is a generic function rather than a method because Go methods cannot introduce their own
-// type parameters.
-func MCPInstallEnumSchema[T Enum[T]](h *MCPHandler) {
-	var zero T
-	h.enumTypeSchemas[reflect.TypeFor[T]()] = mcpBuildEnumSchema(zero.Values())
-}
-
-// mcpInputSchemaFor build the input JSON schema for tool parameter type In, resolving any ENUM
-// fields to their enumerated schemas via the handler's registered per-type schema table. The
-// result is assigned to Tool.InputSchema so the SDK uses it verbatim instead of inferring a
-// schema that would omit the ENUM values.
-func mcpInputSchemaFor[In any](h *MCPHandler) (*jsonschema.Schema, error) {
-	schema, err := jsonschema.For[In](&jsonschema.ForOptions{TypeSchemas: h.enumTypeSchemas})
-	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to infer input schema for %s: %w", reflect.TypeFor[In]().Name(), err,
-		)
-	}
-	mcpDenullRequired(schema)
-	return schema, nil
-}
-
-// mcpDenullRequired collapse the "null" member out of the type of every REQUIRED property whose
-// type was inferred as a two-member ["null", X] union, recursively through the schema tree.
-//
-// jsonschema-go renders a Go slice or pointer field as a nullable type union (e.g. a []T becomes
-// Types: ["null", "array"]) because a nil value is representable. For a field carrying
-// validate:"required" that union is misleading: the field can never legitimately be null. Beyond
-// reading cleanly to an agent, a plain single type also avoids the type-array form that weaker MCP
-// client schema converters mishandle or drop, which can leave the agent guessing a tool's shape.
-func mcpDenullRequired(schema *jsonschema.Schema) {
-	if schema == nil {
-		return
-	}
-
-	required := make(map[string]struct{}, len(schema.Required))
-	for _, name := range schema.Required {
-		required[name] = struct{}{}
-	}
-
-	for name, prop := range schema.Properties {
-		if _, isRequired := required[name]; isRequired {
-			mcpDenullType(prop)
-		}
-	}
-
-	// Recurse into nested schemas so required properties at any depth are covered.
-	for _, prop := range schema.Properties {
-		mcpDenullRequired(prop)
-	}
-	mcpDenullRequired(schema.Items)
-}
-
-// mcpDenullType collapse a two-member ["null", X] type union on the given schema down to the
-// single non-null type X. Any other type shape is left untouched.
-func mcpDenullType(schema *jsonschema.Schema) {
-	if schema == nil || len(schema.Types) != 2 {
-		return
-	}
-
-	var nonNull string
-	sawNull := false
-	for _, t := range schema.Types {
-		if t == "null" {
-			sawNull = true
-			continue
-		}
-		nonNull = t
-	}
-	if !sawNull || nonNull == "" {
-		return
-	}
-
-	schema.Types = nil
-	schema.Type = nonNull
-}
-
-// ======================================================================================
-// Helper functions
-
-/*
-MCPAddTool register a typed tool, building its input schema with ENUM support. It is a thin
-wrapper over mcp.AddTool that pre-populates Tool.InputSchema (see mcpInputSchemaFor); passing a
-Tool with a nil InputSchema to mcp.AddTool would infer a schema without ENUM enumerations.
-
-This is a generic function rather than a method because Go methods cannot introduce their own
-type parameters.
-
-	@param h *MCPHandler - the handler whose registered ENUM schemas resolve the tool's input schema
-	@param server *mcp.Server - target MCP server to register the tool against
-	@param tool *mcp.Tool - the tool definition; its InputSchema is populated in place
-	@param handler mcp.ToolHandlerFor[In, Out] - the tool call handler for input type In and
-	    output type Out
-	@returns error if the input schema for In could not be built
-*/
-func MCPAddTool[In, Out any](
-	h *MCPHandler, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out],
-) error {
-	schema, err := mcpInputSchemaFor[In](h)
-	if err != nil {
-		return err
-	}
-	tool.InputSchema = schema
-	mcp.AddTool(server, tool, handler)
-	return nil
-}
-
-// mcpTextResult build a successful tool result carrying a single plain-text content block. Used
-// by the action tools, whose meaningful result is a short confirmation string.
-func mcpTextResult(text string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{&mcp.TextContent{Text: text}},
-	}
-}
-
-// ======================================================================================
-// Logging Support
-
-// MCPRequestParamKey associated key for MCPRequestParam when storing in request context
-type MCPRequestParamKey struct{}
-
-// MCPRequestParam a helper object for logging a MCP request's parameters into its context
-type MCPRequestParam struct {
-	// ID is the request session ID
-	ID string `json:"id"`
-	// IsToolCall whether the request is tool call
-	IsToolCall bool `json:"is_tool_call"`
-	// Method is the request method
-	Method string `json:"method"`
-	// ToolName tool being called
-	ToolName string `json:"tool_name,omitempty"`
-	// ToolArgs tool call arguments
-	ToolArgs json.RawMessage `json:"tool_args,omitempty"`
-	// Timestamp is when the request is first received
-	Timestamp time.Time
-}
-
-// updateLogTags updates Apex log.Fields map with values the requests's parameters
-func (i *MCPRequestParam) updateLogTags(tags log.Fields) {
-	tags["mcp_request_session_id"] = i.ID
-	tags["mcp_request_is_tool_call"] = i.IsToolCall
-	tags["mcp_request_method"] = i.Method
-	tags["mcp_request_timestamp"] = i.Timestamp.UTC().Format(time.RFC3339Nano)
-	if i.IsToolCall {
-		tags["mcp_request_tool"] = i.ToolName
-		tags["mcp_request_tool_args"] = string(i.ToolArgs)
-	}
-}
-
-/*
-modifyLogMetadataByMCPRequestParam update log metadata with info from MCPRequestParam
-*/
-func modifyLogMetadataByMCPRequestParam(ctx context.Context, theTags log.Fields) {
-	if ctx.Value(MCPRequestParamKey{}) != nil {
-		v, ok := ctx.Value(MCPRequestParamKey{}).(MCPRequestParam)
-		if ok {
-			v.updateLogTags(theTags)
-		}
-	}
-}
-
-// ======================================================================================
 // Main MCP Handler
 
 // MCPHandler MCP request handler
 type MCPHandler struct {
-	goutils.Component
-
-	LogLevel goutils.HTTPRequestLogLevel
-
-	// enumTypeSchemas the per-Go-type enumerated JSON schemas handed to jsonschema-go so ENUM
-	// fields in a tool's input emit a proper enumeration rather than a bare string. Populated
-	// once at construction via MCPInstallEnumSchema and read-only thereafter.
-	enumTypeSchemas map[reflect.Type]*jsonschema.Schema
+	goutils.MCPHandler
 
 	// manage transport-agnostic session management logic
 	manage SessionManagerCore
@@ -554,14 +348,17 @@ func NewSessionMCPHandler(
 	logConfig models.HTTPRequestLogging,
 ) (MCPHandler, error) {
 	handler := MCPHandler{
-		Component: goutils.Component{
-			LogTags: log.Fields{"module": "api", "component": "session-mcp-handler"},
-			LogTagModifiers: []goutils.LogMetadataModifier{
-				goutils.ModifyLogMetadataByRestRequestParam,
-				modifyLogMetadataByMCPRequestParam,
+		MCPHandler: goutils.MCPHandler{
+			Component: goutils.Component{
+				LogTags: log.Fields{"module": "api", "component": "session-mcp-handler"},
+				LogTagModifiers: []goutils.LogMetadataModifier{
+					goutils.ModifyLogMetadataByRestRequestParam,
+					goutils.ModifyLogMetadataByMCPRequestParam,
+				},
 			},
+			LogLevel:        logConfig.LogLevel,
+			EnumTypeSchemas: map[reflect.Type]*jsonschema.Schema{},
 		},
-		enumTypeSchemas: map[reflect.Type]*jsonschema.Schema{},
 		manage: SessionManagerCore{
 			validate:    validator.New(),
 			persistence: persistence,
@@ -572,16 +369,15 @@ func NewSessionMCPHandler(
 			persistence: persistence,
 			redisClient: redisClient,
 		},
-		LogLevel: logConfig.LogLevel,
 	}
 
 	// Register the enumerated schema for every models ENUM that can appear in a tool's input, so
 	// the tool schemas advertise the permitted members rather than a bare string. Keep this list
 	// in lock-step with the const blocks in the models package.
-	MCPInstallEnumSchema[models.SessionStateENUMType](&handler)
-	MCPInstallEnumSchema[models.SessionDriverTypeENUMType](&handler)
-	MCPInstallEnumSchema[models.SessionRunnerModeTypeENUMType](&handler)
-	MCPInstallEnumSchema[models.SessionInputCommandTypeENUMType](&handler)
+	goutils.MCPInstallEnumSchema[models.SessionStateENUMType](&handler.MCPHandler)
+	goutils.MCPInstallEnumSchema[models.SessionDriverTypeENUMType](&handler.MCPHandler)
+	goutils.MCPInstallEnumSchema[models.SessionRunnerModeTypeENUMType](&handler.MCPHandler)
+	goutils.MCPInstallEnumSchema[models.SessionInputCommandTypeENUMType](&handler.MCPHandler)
 
 	if err := models.RegisterWithValidator(handler.manage.validate); err != nil {
 		return handler, goutils.NewRuntimeError(
@@ -625,76 +421,4 @@ func (h MCPHandler) RegisterTools(server *mcp.Server) error {
 		}
 	}
 	return nil
-}
-
-// LoggingMiddleware support middleware to log MCP requests
-func (h MCPHandler) LoggingMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
-	return func(ctx context.Context, method string, req mcp.Request) (result mcp.Result, err error) {
-		// Construct the request param tracking structure
-		requestParams := MCPRequestParam{
-			ID:         req.GetSession().ID(),
-			IsToolCall: false,
-			Method:     method,
-			Timestamp:  time.Now().UTC(),
-		}
-		if toolCallParam, ok := req.(*mcp.CallToolRequest); ok {
-			requestParams.IsToolCall = true
-			requestParams.ToolName = toolCallParam.Params.Name
-			requestParams.ToolArgs = toolCallParam.Params.Arguments
-		}
-
-		// Construct new context
-		workingCtx := context.WithValue(ctx, MCPRequestParamKey{}, requestParams)
-		logTags := h.GetLogTagsForContext(workingCtx)
-
-		// Continue request
-		start := time.Now().UTC()
-		resp, err := next(workingCtx, method, req)
-		duration := time.Since(start)
-		respTimestamp := time.Now().UTC()
-
-		// Build string presentation of the request
-		mcpRequestStr := ""
-		{
-			builder := strings.Builder{}
-			_, _ = builder.WriteString("\nMCP Method: " + method + "\n")
-			if requestParams.IsToolCall {
-				_, _ = builder.WriteString("Tool: " + requestParams.ToolName + "\n")
-				args := map[string]interface{}{}
-				_ = json.Unmarshal(requestParams.ToolArgs, &args)
-				_, _ = builder.WriteString("Tool Args:\n")
-				argsPretty, _ := json.MarshalIndent(&args, "", "  ")
-				_, _ = builder.Write(argsPretty)
-				_, _ = builder.WriteString("\n")
-			}
-			_, _ = builder.WriteString("\n")
-			mcpRequestStr = builder.String()
-		}
-
-		logHandle := log.WithFields(logTags).
-			WithField("mcp_response_timestamp", respTimestamp.UTC().Format(time.RFC3339Nano)).
-			WithField("mcp_request_duration_ms", duration.Milliseconds())
-		if err != nil {
-			stackTraceErr := goutils.DeepestErrorWithTrace(err)
-			l := logHandle.WithError(err)
-			if stackTraceErr != nil {
-				l.Errorf("MCP Request failed:\n%+v\n%s", stackTraceErr, mcpRequestStr)
-			} else {
-				l.Errorf("MCP Request failed\n%s", mcpRequestStr)
-			}
-		} else {
-			switch h.LogLevel {
-			case goutils.HTTPLogLevelDEBUG:
-				logHandle.Debugf("MCP Request success\n%s", mcpRequestStr)
-
-			case goutils.HTTPLogLevelINFO:
-				logHandle.Infof("MCP Request success\n%s", mcpRequestStr)
-
-			default:
-				logHandle.Warnf("MCP Request success\n%s", mcpRequestStr)
-			}
-		}
-
-		return resp, err
-	}
 }

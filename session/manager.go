@@ -444,7 +444,10 @@ func (r *managerImpl) Stop(ctx context.Context) error {
 
 	if err := r.StopAllSessions(ctx, true); err != nil {
 		stopErr = err
-		log.WithError(err).WithFields(logTags).Error("failed to stop all active session runners")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("failed to stop all active session runners")
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -565,7 +568,10 @@ func (r *managerImpl) HandleStartSession(
 		exitErr := models.NewSessionManagerStartSessionError(
 			"manager not accepting session start requests", nil, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Start session " + sessionName + " failed")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -584,7 +590,7 @@ func (r *managerImpl) HandleStartSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -597,7 +603,7 @@ func (r *managerImpl) HandleStartSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -621,12 +627,14 @@ func (r *managerImpl) HandleStartSession(
 
 	// Session needs to be in IDLE state
 	if sessionEntry.State != models.SessionStateIdle {
-		log.WithFields(logTags).Warnf("Session %s is READY with no associated runner", sessionName)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Warnf("Session %s is READY with no associated runner", sessionName)
 		// Force the session back to IDLE
 		if err := forceSessionToIdle(); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Error("Start session " + sessionName + " failed")
 			onComplete(r.workingCtx, err)
 			return err
@@ -653,7 +661,7 @@ func (r *managerImpl) HandleStartSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -667,7 +675,7 @@ func (r *managerImpl) HandleStartSession(
 			)
 			log.
 				WithError(exitErr).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Error("Failed session " + sessionName + " start clean up encountered issues")
 		}
 		// Force the session back to IDLE
@@ -675,7 +683,7 @@ func (r *managerImpl) HandleStartSession(
 		if err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Error("Failed session " + sessionName + " start clean up encountered issues")
 		}
 	}
@@ -689,7 +697,7 @@ func (r *managerImpl) HandleStartSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -704,7 +712,7 @@ func (r *managerImpl) HandleStartSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Start session " + sessionName + " failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -806,7 +814,9 @@ func (r *managerImpl) HandleStopSession(
 	// and stopping is a NOP.
 	runner, foundExistingRunner := r.activeRunners[sessionName]
 	if !foundExistingRunner {
-		log.WithFields(logTags).Warnf("Session %s is not running. Stop is NOP.", sessionName)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Warnf("Session %s is not running. Stop is NOP.", sessionName)
 		onComplete(r.workingCtx, nil)
 		return nil
 	}
@@ -818,7 +828,7 @@ func (r *managerImpl) HandleStopSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Errorf("Failed to stop session %s driver", sessionName)
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -839,7 +849,7 @@ func (r *managerImpl) HandleStopSession(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Errorf("Failed to unload session %s runner", sessionName)
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -962,7 +972,7 @@ func (r *managerImpl) HandleChangeOutputBufferCapacity(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Change session " + sessionName + " output buffer capacity failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -982,7 +992,7 @@ func (r *managerImpl) HandleChangeOutputBufferCapacity(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Change session " + sessionName + " output buffer capacity failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -1006,12 +1016,14 @@ func (r *managerImpl) HandleChangeOutputBufferCapacity(
 
 	// Session needs to be in IDLE state
 	if sessionEntry.State != models.SessionStateIdle {
-		log.WithFields(logTags).Warnf("Session %s is READY with no associated runner", sessionName)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Warnf("Session %s is READY with no associated runner", sessionName)
 		// Force the session back to IDLE
 		if err := forceSessionToIdle(); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Error("Change session " + sessionName + " output buffer capacity failed")
 			onComplete(r.workingCtx, err)
 			return err
@@ -1039,7 +1051,7 @@ func (r *managerImpl) HandleChangeOutputBufferCapacity(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Change session " + sessionName + " output buffer capacity failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -1056,7 +1068,7 @@ func (r *managerImpl) HandleChangeOutputBufferCapacity(
 		)
 		log.
 			WithError(exitErr).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Change session " + sessionName + " output buffer capacity failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
@@ -1080,11 +1092,13 @@ Only exposed for testing purposes. DO NOT DIRECTLY USE IN PRODUCTION.
 */
 func (r *managerImpl) HandleSessionIdleNotify(sessionName string) {
 	logTags := r.GetLogTagsForContext(r.workingCtx)
-	log.WithFields(logTags).Warn("Session " + sessionName + " stopped on its own")
+	log.
+		WithFields(goutils.UpdateCodePositionInTags(logTags)).
+		Warn("Session " + sessionName + " stopped on its own")
 	if err := r.StopSession(r.workingCtx, sessionName, false); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Failed to submit session " + sessionName + " stop request")
 	}
 }
@@ -1101,12 +1115,12 @@ func (r *managerImpl) HandleSessionIPCProcessError(sessionName string, sessionEr
 	logTags := r.GetLogTagsForContext(r.workingCtx)
 	log.
 		WithError(sessionErr).
-		WithFields(logTags).
+		WithFields(goutils.UpdateCodePositionInTags(logTags)).
 		Error("Session " + sessionName + " encountered issues operating the IPC queue")
 	if err := r.StopSession(r.workingCtx, sessionName, false); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Failed to submit session " + sessionName + " stop request")
 	}
 }
@@ -1208,7 +1222,7 @@ func (r *managerImpl) HandleStopAllSessions(onComplete func(ctx context.Context,
 		if err := runner.Stop(r.workingCtx); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Errorf("Failed to stop session %s runner during bulk shutdown", sessionName)
 			if stopErr == nil {
 				stopErr = models.NewSessionManagerStopAllSessionsError(

@@ -77,7 +77,10 @@ func (s *serverImpl) Start(ctx context.Context, serverErrors chan error) error {
 		defer s.wg.Done()
 		logTags := s.GetLogTagsForContext(s.parentCtx)
 		if err := s.mainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).WithFields(logTags).Error("REST API Server failure")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("REST API Server failure")
 			serverErrors <- goutils.NewRuntimeError("REST API Server failure", err, true)
 		}
 	}()
@@ -88,7 +91,10 @@ func (s *serverImpl) Start(ctx context.Context, serverErrors chan error) error {
 		defer s.wg.Done()
 		logTags := s.GetLogTagsForContext(s.parentCtx)
 		if err := s.metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).WithFields(logTags).Error("Metrics API Server failure")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Metrics API Server failure")
 			serverErrors <- goutils.NewRuntimeError("Metrics API Server failure", err, true)
 		}
 	}()

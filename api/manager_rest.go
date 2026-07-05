@@ -91,7 +91,10 @@ func (h SessionManagerHandler) Alive(w http.ResponseWriter, r *http.Request) {
 	if err := h.WriteRESTResponse(
 		w, http.StatusOK, h.GetStdRESTSuccessMsg(r.Context()), nil,
 	); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Failed to form response")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Failed to form response")
 	}
 }
 
@@ -112,7 +115,10 @@ func (h SessionManagerHandler) Ready(w http.ResponseWriter, r *http.Request) {
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -173,13 +179,16 @@ func (h SessionManagerHandler) DefineNewSession(w http.ResponseWriter, r *http.R
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
 	if r.Body == nil {
 		msg := "No payload provided to define new session"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -189,20 +198,26 @@ func (h SessionManagerHandler) DefineNewSession(w http.ResponseWriter, r *http.R
 	var params NewSessionRequest
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		msg := "Unable to parse new session parameters from request"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Request body close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
 		}
 	}()
 
 	{
 		t, _ := json.Marshal(&params)
-		log.WithFields(logTags).WithField("new-session", string(t)).Debug("Defining new session")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			WithField("new-session", string(t)).
+			Debug("Defining new session")
 	}
 
 	// Validate parameters, resolve driver metadata, and define the session
@@ -211,13 +226,13 @@ func (h SessionManagerHandler) DefineNewSession(w http.ResponseWriter, r *http.R
 		var validation goutils.ValidationError
 		if errors.As(dbErr, &validation) {
 			msg := "New session parameters not valid"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 			return
 		}
 		msg := "Failed to define new session"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
+		log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		return
@@ -265,7 +280,10 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -277,7 +295,7 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			msg := "Query parameter 'offset' must be an integer"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -288,7 +306,7 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			msg := "Query parameter 'limit' must be an integer"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -320,7 +338,7 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Query parameter 'order_by_name' must be a boolean"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -336,7 +354,10 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 
 	{
 		t, _ := json.Marshal(&filters)
-		log.WithFields(logTags).WithField("filters", string(t)).Debug("Listing sessions")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			WithField("filters", string(t)).
+			Debug("Listing sessions")
 	}
 
 	// Validate and fetch the sessions
@@ -345,13 +366,13 @@ func (h SessionManagerHandler) ListSessions(w http.ResponseWriter, r *http.Reque
 		var validation goutils.ValidationError
 		if errors.As(dbErr, &validation) {
 			msg := "Session list query filters not valid"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 			return
 		}
 		msg := "Failed to list sessions"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
+		log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		return
@@ -386,7 +407,10 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -398,13 +422,13 @@ func (h SessionManagerHandler) GetSession(w http.ResponseWriter, r *http.Request
 		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 			return
 		}
 		msg := "Failed to fetch session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
+		log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		return
@@ -446,7 +470,10 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -456,7 +483,7 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 	raw := r.URL.Query().Get("capacity")
 	if raw == "" {
 		msg := "Query parameter 'capacity' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -464,14 +491,14 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 	newCap, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
 		msg := "Query parameter 'capacity' must be an integer"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	if newCap < 16384 {
 		msg := "Query parameter 'capacity' must be at least 16384"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -483,7 +510,7 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Invalid 'block' query parameter"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -500,17 +527,17 @@ func (h SessionManagerHandler) UpdateSessionOutputBufCapacity(
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		case errors.As(err, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		default:
 			msg := "Failed to update output buffer capacity for session '" + sessionName + "'"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}
@@ -546,7 +573,10 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -556,7 +586,7 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 	raw := r.URL.Query().Get("mode")
 	if raw == "" {
 		msg := "Query parameter 'mode' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -571,22 +601,22 @@ func (h SessionManagerHandler) UpdateSessionRunMode(w http.ResponseWriter, r *ht
 		switch {
 		case errors.As(dbErr, &validation):
 			msg := "Query parameter 'mode' is not a valid session runner mode"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to update runner mode for session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
@@ -623,7 +653,10 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -631,7 +664,7 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 
 	if r.Body == nil {
 		msg := "No payload provided to update session command"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -641,20 +674,26 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 	var newCommand models.SessionCommand
 	if err := json.NewDecoder(r.Body).Decode(&newCommand); err != nil {
 		msg := "Unable to parse new session command from request"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Request body close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
 		}
 	}()
 
 	{
 		t, _ := json.Marshal(&newCommand)
-		log.WithFields(logTags).WithField("new-command", string(t)).Debug("Updating session command")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			WithField("new-command", string(t)).
+			Debug("Updating session command")
 	}
 
 	// Apply the new command
@@ -665,22 +704,22 @@ func (h SessionManagerHandler) UpdateSessionCommand(w http.ResponseWriter, r *ht
 		switch {
 		case errors.As(dbErr, &validation):
 			msg := "New session command not valid"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to update command for session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
@@ -725,7 +764,10 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -733,7 +775,7 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 
 	if r.Body == nil {
 		msg := "No payload provided to update session driver"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -743,26 +785,32 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 	var params UpdateSessionDriverRequest
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		msg := "Unable to parse new session driver parameters from request"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Request body close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
 		}
 	}()
 
 	{
 		t, _ := json.Marshal(&params)
-		log.WithFields(logTags).WithField("new-driver", string(t)).Debug("Updating session driver")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			WithField("new-driver", string(t)).
+			Debug("Updating session driver")
 	}
 
 	// Validate parameters
 	if err := h.core.validate.Struct(&params); err != nil {
 		msg := "New session driver parameters not valid"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
@@ -778,22 +826,22 @@ func (h SessionManagerHandler) UpdateSessionDriver(w http.ResponseWriter, r *htt
 		switch {
 		case errors.As(dbErr, &validation):
 			msg := "New session driver parameters not valid"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing this change"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to update driver for session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
@@ -828,7 +876,10 @@ func (h SessionManagerHandler) UpdateSessionName(w http.ResponseWriter, r *http.
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -838,7 +889,7 @@ func (h SessionManagerHandler) UpdateSessionName(w http.ResponseWriter, r *http.
 	newName := r.URL.Query().Get("name")
 	if newName == "" {
 		msg := "Query parameter 'name' is required"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -851,17 +902,17 @@ func (h SessionManagerHandler) UpdateSessionName(w http.ResponseWriter, r *http.
 		switch {
 		case errors.As(dbErr, &validation):
 			msg := "Query parameter 'name' is not a valid session name"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to update name for session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
@@ -903,7 +954,10 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -911,7 +965,7 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 
 	if r.Body == nil {
 		msg := "No payload provided to update session description"
-		log.WithFields(logTags).Error(msg)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
 		return
@@ -921,20 +975,23 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 	var params UpdateSessionDescriptionRequest
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		msg := "Unable to parse new session description from request"
-		log.WithError(err).WithFields(logTags).Error(msg)
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusBadRequest
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		return
 	}
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Request body close error")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
 		}
 	}()
 
 	{
 		t, _ := json.Marshal(&params)
-		log.WithFields(logTags).
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			WithField("new-description", string(t)).Debug("Updating session description")
 	}
 
@@ -945,13 +1002,13 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 		var unknownSession goutils.NotFoundError
 		if errors.As(dbErr, &unknownSession) {
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 			return
 		}
 		msg := "Failed to update description for session '" + sessionName + "'"
-		log.WithError(dbErr).WithFields(logTags).Error(msg)
+		log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		return
@@ -985,7 +1042,10 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -998,17 +1058,17 @@ func (h SessionManagerHandler) DeleteSession(w http.ResponseWriter, r *http.Requ
 		switch {
 		case errors.As(dbErr, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		case errors.As(dbErr, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing deletion"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		default:
 			msg := "Failed to delete session '" + sessionName + "'"
-			log.WithError(dbErr).WithFields(logTags).Error(msg)
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
 		}
@@ -1046,7 +1106,10 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -1058,7 +1121,7 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Invalid 'block' query parameter"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -1073,17 +1136,17 @@ func (h SessionManagerHandler) StartSession(w http.ResponseWriter, r *http.Reque
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		case errors.As(err, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing start"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		default:
 			msg := "Failed to start session '" + sessionName + "'"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}
@@ -1121,7 +1184,10 @@ func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Reques
 	logTags := h.GetLogTagsForContext(r.Context())
 	defer func() {
 		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Failed to form response")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
 		}
 	}()
 
@@ -1133,7 +1199,7 @@ func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Reques
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
 			msg := "Invalid 'block' query parameter"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusBadRequest
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 			return
@@ -1148,17 +1214,17 @@ func (h SessionManagerHandler) StopSession(w http.ResponseWriter, r *http.Reques
 		switch {
 		case errors.As(err, &unknownSession):
 			msg := "No session '" + sessionName + "' found"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusNotFound
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		case errors.As(err, &consistency):
 			msg := "Session '" + sessionName + "' is not in a state allowing stop"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusConflict
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		default:
 			msg := "Failed to stop session '" + sessionName + "'"
-			log.WithError(err).WithFields(logTags).Error(msg)
+			log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 			respCode = http.StatusInternalServerError
 			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
 		}

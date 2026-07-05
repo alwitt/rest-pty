@@ -276,13 +276,16 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 			_ = asReader.Close()
 		}()
 
-		log.WithFields(logTags).Info("Starting INPUT transfer loop")
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("Starting INPUT transfer loop")
 		defer func() {
-			log.WithFields(logTags).Info("INPUT transfer loop ended")
+			log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("INPUT transfer loop ended")
 		}()
 		err := cd.PipeInput(asReader)
 		if err != nil && !errors.Is(err, syscall.EIO) && !errors.Is(err, os.ErrClosed) {
-			log.WithError(err).WithFields(logTags).Error("Write STDIN from REDIS failed")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Write STDIN from REDIS failed")
 		}
 	}(core)
 
@@ -299,13 +302,16 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 			_ = asWriter.Close()
 		}()
 
-		log.WithFields(logTags).Info("Starting OUTPUT transfer loop")
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("Starting OUTPUT transfer loop")
 		defer func() {
-			log.WithFields(logTags).Info("OUTPUT transfer loop ended")
+			log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("OUTPUT transfer loop ended")
 		}()
 		err := cd.PipeOutput(asWriter)
 		if err != nil && !errors.Is(err, syscall.EIO) && !errors.Is(err, os.ErrClosed) {
-			log.WithError(err).WithFields(logTags).Error("Write STDOUT/STDERR to REDIS failed")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Write STDOUT/STDERR to REDIS failed")
 		}
 
 		lclCtx, lclCtxCancel := context.WithTimeout(context.Background(), time.Second)
@@ -322,7 +328,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				Error("failed to write session postamble")
 		}
 	}(core)
@@ -337,9 +343,14 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 
 		// We assume that the main PTY child process should be finishing or finished as well
 		if err := cd.Wait(); err != nil {
-			log.WithError(err).WithFields(logTags).Errorf("CMD '%s' non-zero-return", cmdDisplayStr)
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Errorf("CMD '%s' non-zero-return", cmdDisplayStr)
 		}
-		log.WithFields(logTags).Infof("Core command '%s' ended", cmdDisplayStr)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Infof("Core command '%s' ended", cmdDisplayStr)
 
 		// Signal to the parent that the core command finished
 		if err := r.workingCtx.Err(); err == nil && r.commandStopNotify != nil {
@@ -382,7 +393,7 @@ func (r *driverImpl) Stop(ctx context.Context) error {
 		)
 	}
 
-	log.WithFields(logTags).Info("Core Driver teared down")
+	log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("Core Driver teared down")
 
 	// Wait for all daemon threads to end
 	if err := goutils.TimeBoundedWaitGroupWait(ctx, &r.wg, time.Second*5); err != nil {
@@ -391,7 +402,9 @@ func (r *driverImpl) Stop(ctx context.Context) error {
 		)
 	}
 
-	log.WithFields(logTags).Info("All driver support daemon threads stopped")
+	log.
+		WithFields(goutils.UpdateCodePositionInTags(logTags)).
+		Info("All driver support daemon threads stopped")
 
 	// Clear records
 	r.core = nil

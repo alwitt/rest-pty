@@ -141,7 +141,9 @@ func (d *dockerDriver) Setup() error {
 	}
 	d.containerID = created.ID
 	for _, warning := range created.Warnings {
-		log.WithFields(logTags).Warnf("container create warning: %s", warning)
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Warnf("container create warning: %s", warning)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -171,7 +173,9 @@ func (d *dockerDriver) Setup() error {
 		)
 	}
 
-	log.WithFields(logTags).Infof("Started container %s for %s", d.containerID, cmdDisplayStr)
+	log.
+		WithFields(goutils.UpdateCodePositionInTags(logTags)).
+		Infof("Started container %s for %s", d.containerID, cmdDisplayStr)
 
 	// ------------------------------------------------------------------------------------
 	// Size the TTY to the requested geometry
@@ -268,7 +272,10 @@ func (d *dockerDriver) TearDown() error {
 		Signal: stopSignal,
 	}); err != nil {
 		// A container that already exited on its own is not an error worth failing teardown over.
-		log.WithError(err).WithFields(logTags).Warn("container stop returned an error")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Warn("container stop returned an error")
 	}
 
 	if d.metadata.IsRemoveOnExit() {

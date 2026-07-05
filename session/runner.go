@@ -238,9 +238,14 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 			lclCtx, lclCtxCancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer lclCtxCancel()
 			logTags := instance.GetLogTagsForContext(lclCtx)
-			log.WithFields(logTags).Warn("Session command stopped prematurely")
+			log.
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Warn("Session command stopped prematurely")
 			if err := instance.StopSession(lclCtx, false); err != nil {
-				log.WithError(err).WithFields(logTags).Error("Failed to request stop session")
+				log.
+					WithError(err).
+					WithFields(goutils.UpdateCodePositionInTags(logTags)).
+					Error("Failed to request stop session")
 			}
 		},
 	)
@@ -354,7 +359,10 @@ func (r *runnerImpl) Stop(ctx context.Context) error {
 	var stopErr error
 
 	if err := r.driver.Stop(ctx); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Failed to stop session driver")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Failed to stop session driver")
 	}
 
 	if err := r.worker.StopEventLoop(); err != nil {
@@ -477,11 +485,16 @@ func (r *runnerImpl) HandleStartSession(onComplete func(ctx context.Context, err
 			exitErr := models.NewSessionRunnerStartUpError(
 				"failed to start session "+r.sessionName+" driver", err, true,
 			)
-			log.WithError(exitErr).WithFields(logTags).Error("Session driver failed to start")
+			log.
+				WithError(exitErr).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Session driver failed to start")
 			onComplete(r.workingCtx, exitErr)
 			return exitErr
 		}
-		log.WithFields(logTags).Info("Session driver already running; treating start as idempotent")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Info("Session driver already running; treating start as idempotent")
 	}
 
 	// Move a session to `READY`
@@ -498,7 +511,10 @@ func (r *runnerImpl) HandleStartSession(onComplete func(ctx context.Context, err
 		exitErr := models.NewSessionRunnerStartUpError(
 			"failed to transition session "+r.sessionName+" to READY", dbErr, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session transition to READY failed")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session transition to READY failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -600,11 +616,16 @@ func (r *runnerImpl) HandleStopSession(onComplete func(ctx context.Context, err 
 			exitErr := models.NewSessionRunnerShutdownError(
 				"failed to stop session "+r.sessionName+" driver", err, true,
 			)
-			log.WithError(exitErr).WithFields(logTags).Error("Session driver failed to stop")
+			log.
+				WithError(exitErr).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Session driver failed to stop")
 			onComplete(r.workingCtx, exitErr)
 			return exitErr
 		}
-		log.WithFields(logTags).Info("Session driver already stopped; treating stop as idempotent")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Info("Session driver already stopped; treating stop as idempotent")
 	}
 
 	// Move a session to `IDLE`
@@ -621,7 +642,10 @@ func (r *runnerImpl) HandleStopSession(onComplete func(ctx context.Context, err 
 		exitErr := models.NewSessionRunnerShutdownError(
 			"failed to transition session "+r.sessionName+" to IDLE", dbErr, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session transition to IDLE failed")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session transition to IDLE failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -723,7 +747,10 @@ func (r *runnerImpl) HandleSubmitCommands(
 		exitErr := models.NewSessionRunnerSubmitCommandError(
 			"session "+r.sessionName+" not running in COMMAND mode", nil, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session can't process commands")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session can't process commands")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -732,7 +759,10 @@ func (r *runnerImpl) HandleSubmitCommands(
 		exitErr := models.NewSessionRunnerSubmitCommandError(
 			"session "+r.sessionName+" not ready to process commands yet", nil, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session can't process commands")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session can't process commands")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -742,7 +772,10 @@ func (r *runnerImpl) HandleSubmitCommands(
 		exitErr := models.NewSessionRunnerSubmitCommandError(
 			"failed to build command for session "+r.sessionName, err, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session commands serialization error")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session commands serialization error")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -754,7 +787,10 @@ func (r *runnerImpl) HandleSubmitCommands(
 		exitErr := models.NewSessionRunnerSubmitCommandError(
 			"failed to grab input buffer for session "+r.sessionName, err, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session commands serialization error")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session commands serialization error")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -763,7 +799,10 @@ func (r *runnerImpl) HandleSubmitCommands(
 		exitErr := models.NewSessionRunnerSubmitCommandError(
 			"failed to write commands into input buffer for session "+r.sessionName, err, true,
 		)
-		log.WithError(exitErr).WithFields(logTags).Error("Session commands write failed")
+		log.
+			WithError(exitErr).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Session commands write failed")
 		onComplete(r.workingCtx, exitErr)
 		return exitErr
 	}
@@ -880,9 +919,13 @@ func (r *runnerImpl) processIPCRequests() {
 
 	logTags := r.GetLogTagsForContext(r.workingCtx)
 
-	log.WithFields(logTags).Info("Starting session " + r.sessionName + " IPC receive loop")
+	log.
+		WithFields(goutils.UpdateCodePositionInTags(logTags)).
+		Info("Starting session " + r.sessionName + " IPC receive loop")
 	defer func() {
-		log.WithFields(logTags).Info("Session " + r.sessionName + " IPC receive loop ended")
+		log.
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Info("Session " + r.sessionName + " IPC receive loop ended")
 	}()
 
 	for {
@@ -896,7 +939,10 @@ func (r *runnerImpl) processIPCRequests() {
 			exitErr := models.NewSessionRunnerIPCProcessError(
 				"IPC message read failure for session "+r.sessionName, err, true,
 			)
-			log.WithError(exitErr).WithFields(logTags).Error("Session IPC read failure")
+			log.
+				WithError(exitErr).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Session IPC read failure")
 			r.ipcProcessErrorNotify(exitErr)
 			return
 		}
@@ -910,7 +956,10 @@ func (r *runnerImpl) processIPCRequests() {
 		// failures (the PopLeft above) warrant tearing the loop down.
 		if newMessage != nil {
 			if err := r.HandleIPCRequestMessage(newMessage); err != nil {
-				log.WithError(err).WithFields(logTags).Error("Session IPC process failure")
+				log.
+					WithError(err).
+					WithFields(goutils.UpdateCodePositionInTags(logTags)).
+					Error("Session IPC process failure")
 			}
 		}
 	}

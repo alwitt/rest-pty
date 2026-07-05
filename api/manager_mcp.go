@@ -23,8 +23,8 @@ func (h MCPHandler) registerDefineNewSessionTool(server *mcp.Server) error {
 			"output. Only docker-backed, hardened sessions can be defined here; host directory " +
 			"mounting and added capabilities are not available."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -65,8 +65,8 @@ func (h MCPHandler) registerListSessionsTool(server *mcp.Server) error {
 		"List the known sessions, optionally filtered by name, driver type, or state, " +
 			"with pagination and ordering."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -93,8 +93,8 @@ func (h MCPHandler) registerGetSessionTool(server *mcp.Server) error {
 	toolDescription :=
 		"Fetch one session by its name, including its current state and driver settings."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -121,8 +121,8 @@ func (h MCPHandler) registerUpdateSessionOutputBufCapacityTool(
 		"Change the output buffer capacity of an IDLE session. The change is applied synchronously. " +
 			"IMPORTANT: THIS WILL DELETED ALL EXISTING BUFFERED CONTENT"
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -137,7 +137,7 @@ func (h MCPHandler) registerUpdateSessionOutputBufCapacityTool(
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult(fmt.Sprintf(
+			return goutils.MCPTextResult(fmt.Sprintf(
 				"session '%s' output buffer capacity updated to %d", in.SessionName, in.Capacity,
 			)), nil, nil
 		},
@@ -150,8 +150,8 @@ func (h MCPHandler) registerUpdateSessionCommandTool(server *mcp.Server) error {
 	toolName := "update_session_command"
 	toolDescription := "Change the command an IDLE session runs."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -164,7 +164,7 @@ func (h MCPHandler) registerUpdateSessionCommandTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' command updated"), nil, nil
+			return goutils.MCPTextResult("session '" + in.SessionName + "' command updated"), nil, nil
 		},
 	)
 }
@@ -174,8 +174,8 @@ func (h MCPHandler) registerUpdateSessionNameTool(server *mcp.Server) error {
 	toolName := "update_session_name"
 	toolDescription := "Rename a session."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -188,9 +188,9 @@ func (h MCPHandler) registerUpdateSessionNameTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' renamed to '" + in.NewName + "'"),
-				nil,
-				nil
+			return goutils.MCPTextResult(
+				"session '" + in.SessionName + "' renamed to '" + in.NewName + "'",
+			), nil, nil
 		},
 	)
 }
@@ -200,8 +200,8 @@ func (h MCPHandler) registerUpdateSessionDescriptionTool(server *mcp.Server) err
 	toolName := "update_session_description"
 	toolDescription := "Change a session's description. Omit the description to clear it."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -214,7 +214,7 @@ func (h MCPHandler) registerUpdateSessionDescriptionTool(server *mcp.Server) err
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' description updated"), nil, nil
+			return goutils.MCPTextResult("session '" + in.SessionName + "' description updated"), nil, nil
 		},
 	)
 }
@@ -224,8 +224,8 @@ func (h MCPHandler) registerDeleteSessionTool(server *mcp.Server) error {
 	toolName := "delete_session"
 	toolDescription := "Delete an IDLE session."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -236,7 +236,7 @@ func (h MCPHandler) registerDeleteSessionTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' deleted"), nil, nil
+			return goutils.MCPTextResult("session '" + in.SessionName + "' deleted"), nil, nil
 		},
 	)
 }
@@ -248,8 +248,8 @@ func (h MCPHandler) registerStartSessionTool(server *mcp.Server) error {
 		"Start a session: bring up its runner and move it to the READY state so it can " +
 			"accept input and produce output. The start is performed synchronously."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -260,7 +260,7 @@ func (h MCPHandler) registerStartSessionTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' started"), nil, nil
+			return goutils.MCPTextResult("session '" + in.SessionName + "' started"), nil, nil
 		},
 	)
 }
@@ -272,8 +272,8 @@ func (h MCPHandler) registerStopSessionTool(server *mcp.Server) error {
 		"Stop a session: unload its runner and return it to the IDLE state. The stop is " +
 			"performed synchronously."
 
-	return MCPAddTool(
-		&h,
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
 		server,
 		&mcp.Tool{Name: toolName, Description: toolDescription},
 		func(
@@ -284,7 +284,7 @@ func (h MCPHandler) registerStopSessionTool(server *mcp.Server) error {
 				return nil, nil, exitErr
 			}
 
-			return mcpTextResult("session '" + in.SessionName + "' stopped"), nil, nil
+			return goutils.MCPTextResult("session '" + in.SessionName + "' stopped"), nil, nil
 		},
 	)
 }
