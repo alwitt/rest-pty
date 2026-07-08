@@ -69,9 +69,9 @@ type APIConfig struct {
 // APIServerConfig defines HTTP API / server parameters
 type APIServerConfig struct {
 	// Server defines HTTP server parameters
-	Server HTTPServerConfig `mapstructure:"service" json:"service" validate:"required_with=Enabled"`
+	Server HTTPServerConfig `mapstructure:"service" json:"service" validate:"required"`
 	// APIs defines API settings for a submodule
-	APIs APIConfig `mapstructure:"apis" json:"apis" validate:"required_with=Enabled"`
+	APIs APIConfig `mapstructure:"apis" json:"apis" validate:"required"`
 }
 
 // ======================================================================================
@@ -88,7 +88,7 @@ type MetricsFeatureConfig struct {
 // MetricsConfig application metrics config
 type MetricsConfig struct {
 	// Server defines HTTP server parameters
-	Server HTTPServerConfig `mapstructure:"service" json:"service" validate:"required_with=Enabled"`
+	Server HTTPServerConfig `mapstructure:"service" json:"service" validate:"required"`
 	// MetricsEndpoint path to host the Prometheus metrics endpoint
 	MetricsEndpoint string `mapstructure:"metricsEndpoint" json:"metricsEndpoint" validate:"required"`
 	// MaxRequests max number of metrics requests in parallel to support
