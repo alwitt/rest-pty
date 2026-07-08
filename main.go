@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/app"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
@@ -102,7 +103,10 @@ func main() {
 
 	err = app.Run(os.Args)
 	if err != nil {
-		log.WithError(err).WithFields(logTags).Fatal("Program shutdown")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Fatal("Program shutdown")
 	}
 }
 
@@ -130,17 +134,31 @@ func runApplicationServer(ctx *cli.Context) error {
 
 	// Validate general config
 	if err := validate.Struct(&cmdArgs); err != nil {
-		log.WithError(err).WithFields(logTags).Error("Invalid application args")
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Invalid application args")
 		return err
 	}
 
 	setupLogging()
 
+	if err := models.RegisterWithValidator(validate); err != nil {
+		log.
+			WithError(err).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			Error("Failed to register config validators")
+		return err
+	}
+
 	// Process server config
 	var configs models.ApplicationConfig
 	{
 		if err := validate.Struct(&svrArgs); err != nil {
-			log.WithError(err).WithFields(logTags).Error("Invalid server args")
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Invalid server args")
 			return err
 		}
 		// Process the config file
@@ -149,7 +167,7 @@ func runApplicationServer(ctx *cli.Context) error {
 		if err := viper.ReadInConfig(); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				WithField("file", svrArgs.ConfigFile).
 				Error("Failed to read server config file")
 			return err
@@ -157,9 +175,17 @@ func runApplicationServer(ctx *cli.Context) error {
 		if err := viper.Unmarshal(&configs); err != nil {
 			log.
 				WithError(err).
-				WithFields(logTags).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
 				WithField("file", svrArgs.ConfigFile).
 				Error("Server config content not valid")
+			return err
+		}
+		if err := validate.Struct(&configs); err != nil {
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				WithField("file", svrArgs.ConfigFile).
+				Error("Server config failed validation")
 			return err
 		}
 	}
@@ -171,7 +197,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	if err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Server construction failed")
 		return err
 	}
@@ -182,7 +208,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	if err := server.Start(ctx.Context, serverErrors); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Server initialization failed")
 		return err
 	}
@@ -201,7 +227,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	case err := <-serverErrors:
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Server runtime failure; initiating shutdown")
 	}
 
@@ -216,7 +242,7 @@ func runApplicationServer(ctx *cli.Context) error {
 	if err := server.Stop(stopCtx); err != nil {
 		log.
 			WithError(err).
-			WithFields(logTags).
+			WithFields(goutils.UpdateCodePositionInTags(logTags)).
 			Error("Server shutdown failed")
 		return err
 	}

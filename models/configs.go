@@ -59,7 +59,7 @@ type EndpointConfig struct {
 // APIConfig defines API settings for a submodule
 type APIConfig struct {
 	// Endpoint sets API endpoint related parameters
-	Endpoint EndpointConfig `mapstructure:"endPoint" json:"endPoint" validate:"required,dive"`
+	Endpoint EndpointConfig `mapstructure:"endPoint" json:"endPoint" validate:"required"`
 	// RequestLogging sets API request logging parameters
 	RequestLogging HTTPRequestLogging `mapstructure:"requestLogging" json:"requestLogging" validate:"required"`
 	// EnableMCP enable the MCP endpoint
@@ -94,7 +94,7 @@ type MetricsConfig struct {
 	// MaxRequests max number of metrics requests in parallel to support
 	MaxRequests int `mapstructure:"maxRequests" json:"maxRequests" validate:"gte=1"`
 	// Features metrics framework features to enable
-	Features MetricsFeatureConfig `mapstructure:"features" json:"features" validate:"gte=1"`
+	Features MetricsFeatureConfig `mapstructure:"features" json:"features" validate:"required"`
 }
 
 // ======================================================================================
@@ -103,7 +103,7 @@ type MetricsConfig struct {
 // RedisConnectionConfig connection parameter to Redis server
 type RedisConnectionConfig struct {
 	// Host of the server
-	Host string `mapstructure:"host" json:"host" validate:"required,hostname"`
+	Host string `mapstructure:"host" json:"host" validate:"required"`
 	// Port of the server
 	Port uint16 `mapstructure:"port" json:"port"`
 	// DBNumber number of the REDIS database
