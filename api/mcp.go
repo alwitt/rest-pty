@@ -7,6 +7,7 @@ import (
 
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
+	goutilsRuntime "github.com/alwitt/goutils/runtime"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
@@ -50,17 +51,17 @@ type MCPDockerDriverSettings struct {
 	WorkingDir string `json:"working_dir,omitempty" jsonschema:"working directory for the container process; defaults to '/tmp'"`
 
 	// WritableDirs tmpfs mounts providing writable directories within the read-only rootfs
-	WritableDirs []models.ContainerTmpfsMount `json:"writable_dirs,omitempty" validate:"omitempty,dive" jsonschema:"tmpfs mounts providing writable directories within the read-only rootfs"`
+	WritableDirs []goutilsRuntime.InMemoryWritableDir `json:"writable_dirs,omitempty" validate:"omitempty,dive" jsonschema:"tmpfs mounts providing writable directories within the read-only rootfs"`
 
 	// NetworkMode the container network mode (e.g. "none", "bridge"); defaults to 'none'.
 	// Must be routable when PublishPorts is set.
 	NetworkMode string `json:"network_mode,omitempty" jsonschema:"the container network mode (e.g. \"none\", \"bridge\"); defaults to 'none'. Must be routable when publish_ports is set."`
 	// PublishPorts container ports published to the host for inbound connections
-	PublishPorts []models.ContainerPortPublish `json:"publish_ports,omitempty" validate:"omitempty,dive" jsonschema:"container ports published to the host for inbound connections"`
+	PublishPorts []goutilsRuntime.DockerPortPublish `json:"publish_ports,omitempty" validate:"omitempty,dive" jsonschema:"container ports published to the host for inbound connections"`
 	// ExtraHosts additional host-to-IP mappings for the container
-	ExtraHosts []models.ContainerExtraHost `json:"extra_hosts,omitempty" validate:"omitempty,dive" jsonschema:"additional host-to-IP mappings for the container"`
+	ExtraHosts []goutilsRuntime.ContainerExtraHost `json:"extra_hosts,omitempty" validate:"omitempty,dive" jsonschema:"additional host-to-IP mappings for the container"`
 	// Environment additional environment variables for the container process
-	Environment []models.ContainerEnvVar `json:"environment,omitempty" validate:"omitempty,dive" jsonschema:"additional environment variables for the container process"`
+	Environment []goutilsRuntime.ContainerEnvVar `json:"environment,omitempty" validate:"omitempty,dive" jsonschema:"additional environment variables for the container process"`
 }
 
 // ToDriverParams project the restricted agent-facing settings onto the full docker driver
@@ -69,15 +70,20 @@ type MCPDockerDriverSettings struct {
 // mounts, no-new-privileges, etc.).
 func (s MCPDockerDriverSettings) ToDriverParams() models.SessionDriverDockerParams {
 	return models.SessionDriverDockerParams{
-		Image:        s.Image,
-		DisplayRows:  s.DisplayRows,
-		DisplayCols:  s.DisplayCols,
-		WorkingDir:   s.WorkingDir,
-		WritableDirs: s.WritableDirs,
-		NetworkMode:  s.NetworkMode,
-		PublishPorts: s.PublishPorts,
-		ExtraHosts:   s.ExtraHosts,
-		Environment:  s.Environment,
+		DockerRuntimeParams: goutilsRuntime.DockerRuntimeParams{
+			ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{
+				Image:        s.Image,
+				WorkingDir:   s.WorkingDir,
+				WritableDirs: s.WritableDirs,
+				ExtraHosts:   s.ExtraHosts,
+				Environment:  s.Environment,
+				Streaming: goutils.GetTypedPtr(goutilsRuntime.StreamIOParams{
+					DisplayRows: s.DisplayRows, DisplayCols: s.DisplayCols,
+				}),
+			},
+			NetworkMode:  s.NetworkMode,
+			PublishPorts: s.PublishPorts,
+		},
 	}
 }
 

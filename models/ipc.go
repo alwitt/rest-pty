@@ -48,6 +48,16 @@ Response - Session Manager
 */
 )
 
+// Values all valid IPCMessageTypeEnumType values
+func (IPCMessageTypeEnumType) Values() []IPCMessageTypeEnumType {
+	return []IPCMessageTypeEnumType{
+		IPCMsgTypeReqRunCommands,
+		IPCMsgTypeReqStopSession,
+		IPCMsgTypeRespRunCommands,
+		IPCMsgTypeRespStopSession,
+	}
+}
+
 // ParseIPCMessage parse the IPC message based on type
 func ParseIPCMessage(validator *validator.Validate, msg []byte) (interface{}, error) {
 	var asBaseMsg BaseIPCMessage

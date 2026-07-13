@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"regexp"
 
+	"github.com/alwitt/goutils"
+	goutilsRuntime "github.com/alwitt/goutils/runtime"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -14,8 +16,8 @@ RegisterWithValidator register with the validator this custom validation support
 	@return whether successful
 */
 func RegisterWithValidator(v *validator.Validate) error {
-	if err := v.RegisterValidation(
-		"session_state_type", validateSessionStateType,
+	if err := goutils.RegisterENUMInValidator(
+		v, "session_state_type", goutils.ValidateStringENUM[SessionStateENUMType](),
 	); err != nil {
 		return err
 	}
@@ -26,32 +28,26 @@ func RegisterWithValidator(v *validator.Validate) error {
 		return err
 	}
 
-	if err := v.RegisterValidation(
-		"session_driver_type", validateSessionDriverType,
+	if err := goutils.RegisterENUMInValidator(
+		v, "session_driver_type", goutils.ValidateStringENUM[SessionDriverTypeENUMType](),
 	); err != nil {
 		return err
 	}
 
-	if err := v.RegisterValidation(
-		"session_runner_mode_type", validateSessionRunnerModeType,
+	if err := goutils.RegisterENUMInValidator(
+		v, "session_runner_mode_type", goutils.ValidateStringENUM[SessionRunnerModeTypeENUMType](),
 	); err != nil {
 		return err
 	}
 
-	if err := v.RegisterValidation(
-		"session_input_cmd_type", validateSessionInputCmdType,
+	if err := goutils.RegisterENUMInValidator(
+		v, "session_input_cmd_type", goutils.ValidateStringENUM[SessionInputCommandTypeENUMType](),
 	); err != nil {
 		return err
 	}
 
-	if err := v.RegisterValidation(
-		"ipc_msg_type", validateIPCMessageType,
-	); err != nil {
-		return err
-	}
-
-	if err := v.RegisterValidation(
-		"container_stop_signal", validateContainerStopSignal,
+	if err := goutils.RegisterENUMInValidator(
+		v, "ipc_msg_type", goutils.ValidateStringENUM[IPCMessageTypeEnumType](),
 	); err != nil {
 		return err
 	}
@@ -59,7 +55,7 @@ func RegisterWithValidator(v *validator.Validate) error {
 	v.RegisterStructValidation(validateSessionInputCommand, SessionInputCommand{})
 	v.RegisterStructValidation(validateSessionDriverDockerParams, SessionDriverDockerParams{})
 
-	return nil
+	return goutils.RegisterWithValidator(v)
 }
 
 // validateSessionInputCommand struct-level validation for SessionInputCommand,
@@ -74,68 +70,6 @@ func validateSessionInputCommand(sl validator.StructLevel) {
 	}
 }
 
-func validateSessionStateType(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch SessionStateENUMType(fl.Field().String()) {
-	case SessionStateIdle:
-		fallthrough
-	case SessionStateReady:
-		return true
-	}
-	return false
-}
-
-func validateSessionRunnerModeType(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch SessionRunnerModeTypeENUMType(fl.Field().String()) {
-	case SessionRunnerModeTypeCommanded:
-		fallthrough
-	case SessionRunnerModeTypeByPassed:
-		return true
-	}
-	return false
-}
-
-func validateSessionInputCmdType(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch SessionInputCommandTypeENUMType(fl.Field().String()) {
-	case SessionInputCommandTypeText:
-		fallthrough
-	case SessionInputCommandTypeCTRL:
-		fallthrough
-	case SessionInputCommandTypeCR:
-		fallthrough
-	case SessionInputCommandTypeRaw:
-		return true
-	}
-	return false
-}
-
-func validateContainerStopSignal(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch ContainerStopSignalENUMType(fl.Field().String()) {
-	case ContainerStopSignalSIGINT:
-		fallthrough
-	case ContainerStopSignalSIGTERM:
-		fallthrough
-	case ContainerStopSignalSIGQUIT:
-		fallthrough
-	case ContainerStopSignalSIGHUP:
-		fallthrough
-	case ContainerStopSignalSIGKILL:
-		return true
-	}
-	return false
-}
-
 // validateSessionDriverDockerParams struct-level validation for SessionDriverDockerParams.
 // Publishing ports for inbound connections requires a routable network mode; the default
 // "none" network mode (also the empty-string default) cannot accept inbound connections.
@@ -146,7 +80,7 @@ func validateSessionDriverDockerParams(sl validator.StructLevel) {
 	}
 	networkMode := params.NetworkMode
 	if networkMode == "" {
-		networkMode = DefaultContainerNetworkMode
+		networkMode = goutilsRuntime.DefaultDockerNetworkMode
 	}
 	if networkMode == "none" {
 		sl.ReportError(
@@ -159,19 +93,6 @@ func validateSessionDriverDockerParams(sl validator.StructLevel) {
 	}
 }
 
-func validateSessionDriverType(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch SessionDriverTypeENUMType(fl.Field().String()) {
-	case SessionDriverTypePTY:
-		fallthrough
-	case SessionDriverTypeDocker:
-		return true
-	}
-	return false
-}
-
 var validSessionNameREGEX = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
 func validateSessionNameType(fl validator.FieldLevel) bool {
@@ -179,21 +100,4 @@ func validateSessionNameType(fl validator.FieldLevel) bool {
 		return false
 	}
 	return validSessionNameREGEX.MatchString(fl.Field().String())
-}
-
-func validateIPCMessageType(fl validator.FieldLevel) bool {
-	if fl.Field().Kind() != reflect.String {
-		return false
-	}
-	switch IPCMessageTypeEnumType(fl.Field().String()) {
-	case IPCMsgTypeReqRunCommands:
-		fallthrough
-	case IPCMsgTypeReqStopSession:
-		fallthrough
-	case IPCMsgTypeRespRunCommands:
-		fallthrough
-	case IPCMsgTypeRespStopSession:
-		return true
-	}
-	return false
 }

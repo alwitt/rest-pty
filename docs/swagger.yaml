@@ -183,7 +183,7 @@ definitions:
           type: string
         type: array
       cmd:
-        description: Command the command being ran
+        description: Command the command being run
         type: string
     required:
     - cmd
@@ -246,7 +246,7 @@ info:
   contact: {}
   description: REST API Wrapper Around PTY
   title: rest-pty
-  version: v0.1.0-rc1
+  version: v0.2.2
 paths:
   /liveness/alive:
     get:

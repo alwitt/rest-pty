@@ -930,6 +930,11 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		testMocks.passthroughTransaction()
 		testMocks.database.
 			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(sampleSession("test-session"), nil).
+			Once()
+		testMocks.database.
+			EXPECT().
 			UpdateSessionDriver(mock.Anything, "test-session", mock.Anything).
 			Return(nil).
 			Once()
@@ -956,6 +961,13 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		bad := validRequest()
 		bad.DriverMetadata = json.RawMessage(`{"display_rows": 1, "display_cols": 120}`)
 
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(sampleSession("test-session"), nil).
+			Once()
+
 		req, err := http.NewRequest(
 			"PUT", "/v1/sessions/test-session/driver", jsonBody(assert, bad),
 		)
@@ -978,6 +990,13 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		bad := validRequest()
 		bad.DriverType = models.SessionDriverTypeDocker
 
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(sampleSession("test-session"), nil).
+			Once()
+
 		req, err := http.NewRequest(
 			"PUT", "/v1/sessions/test-session/driver", jsonBody(assert, bad),
 		)
@@ -998,6 +1017,11 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		uut := buildSessionManagerHandler(assert, testMocks)
 
 		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(sampleSession("test-session"), nil).
+			Once()
 		testMocks.database.
 			EXPECT().
 			UpdateSessionDriver(mock.Anything, "test-session", mock.Anything).
@@ -1024,6 +1048,11 @@ func TestSessionManagerHandlerUpdateSessionDriver(t *testing.T) {
 		uut := buildSessionManagerHandler(assert, testMocks)
 
 		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			GetSessionByName(mock.Anything, "test-session").
+			Return(sampleSession("test-session"), nil).
+			Once()
 		testMocks.database.
 			EXPECT().
 			UpdateSessionDriver(mock.Anything, "test-session", mock.Anything).

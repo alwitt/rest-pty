@@ -4,7 +4,7 @@
         "description": "REST API Wrapper Around PTY",
         "title": "rest-pty",
         "contact": {},
-        "version": "v0.1.0-rc1"
+        "version": "v0.2.2"
     },
     "host": "localhost:38281",
     "basePath": "/",
@@ -1555,7 +1555,7 @@
                     }
                 },
                 "cmd": {
-                    "description": "Command the command being ran",
+                    "description": "Command the command being run",
                     "type": "string"
                 }
             }

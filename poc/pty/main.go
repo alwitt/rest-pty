@@ -15,6 +15,7 @@ import (
 
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
+	goutilsRuntime "github.com/alwitt/goutils/runtime"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
@@ -123,21 +124,24 @@ func preparePTYSession(session *models.Session) {
 func prepareDockerSession(session *models.Session) {
 	session.DriverType = models.SessionDriverTypeDocker
 	// Set docker metadata
-	driverMeta := models.SessionDriverDockerParams{
-		Image:       "rest-pty-helper:latest",
-		DisplayRows: 100,
-		DisplayCols: 300,
-		NetworkMode: "bridge",
-		PublishPorts: []models.ContainerPortPublish{
-			{
-				ContainerPort: 5555,
-				Protocol:      "tcp",
-				HostPort:      5555,
-				HostIP:        "127.0.0.1",
-			},
+	driverMeta := goutilsRuntime.DockerRuntimeParams{
+		ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{
+			Image: "rest-pty-helper:latest",
+			Streaming: goutils.GetTypedPtr(goutilsRuntime.StreamIOParams{
+				DisplayRows: 100, DisplayCols: 300,
+			}),
 		},
+		NetworkMode: "bridge",
+		PublishPorts: []goutilsRuntime.DockerPortPublish{{
+			ContainerPort: 5555,
+			Protocol:      "tcp",
+			HostPort:      5555,
+			HostIP:        "127.0.0.1",
+		}},
 	}
-	driverMetadataStr, _ := json.Marshal(&driverMeta)
+	driverMetadataStr, _ := json.Marshal(&models.SessionDriverDockerParams{
+		DockerRuntimeParams: driverMeta,
+	})
 	session.DriverMetadata = datatypes.JSON(driverMetadataStr)
 }
 

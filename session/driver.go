@@ -232,12 +232,10 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 	// Write a preamble into the output buffer to indicate when the PTY started
 	if _, err = outputBuf.Write(
 		r.workingCtx,
-		[]byte(
-			fmt.Sprintf(
-				"\n\r============= [%s] STARTING '%s' =============\n\r",
-				time.Now().UTC().String(),
-				cmdDisplayStr,
-			),
+		fmt.Appendf(nil,
+			"\n\r============= [%s] STARTING '%s' =============\n\r",
+			time.Now().UTC().String(),
+			cmdDisplayStr,
 		),
 	); err != nil {
 		r.workingCtxCancel()
@@ -318,12 +316,10 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 		defer lclCtxCancel()
 		if _, err = outputBuf.Write(
 			lclCtx,
-			[]byte(
-				fmt.Sprintf(
-					"\n\r============= [%s] '%s' Stopped =============\n\r",
-					time.Now().UTC().String(),
-					cmdDisplayStr,
-				),
+			fmt.Appendf(nil,
+				"\n\r============= [%s] '%s' Stopped =============\n\r",
+				time.Now().UTC().String(),
+				cmdDisplayStr,
 			),
 		); err != nil {
 			log.
@@ -385,15 +381,23 @@ func (r *driverImpl) Stop(ctx context.Context) error {
 		)
 	}
 
-	r.workingCtxCancel()
-
+	// Tear the core driver down BEFORE cancelling the working context. For the docker driver
+	// TearDown issues the container stop/removal on this working context, so cancelling first
+	// would abort those calls with "context canceled" and orphan the container. TearDown closes
+	// the hijacked attach connection, which unblocks the STDIN/STDOUT pipe loops; the working
+	// context is then cancelled below to release any remaining goroutines keyed off it (e.g. the
+	// REDIS input reader poll) before waiting on them. On the TearDown-failure early return the
+	// context is still cancelled so those goroutines are not leaked.
 	if err := r.core.TearDown(); err != nil {
+		r.workingCtxCancel()
 		return goutils.NewRuntimeError(
 			"session "+r.session.Name+" driver tear down failed", err, true,
 		)
 	}
 
 	log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Info("Core Driver teared down")
+
+	r.workingCtxCancel()
 
 	// Wait for all daemon threads to end
 	if err := goutils.TimeBoundedWaitGroupWait(ctx, &r.wg, time.Second*5); err != nil {
