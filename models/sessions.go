@@ -140,9 +140,6 @@ func (s Session) ParseDriverMetadata(validator *validator.Validate) (interface{}
 		if err := json.Unmarshal(s.DriverMetadata, &parsed); err != nil {
 			return nil, fmt.Errorf("session '%s' driver metadata parse failed [%w]", s.Name, err)
 		}
-		// Fill in the entrypoint and commands
-		parsed.Entrypoint = []string{s.Command.Command}
-		parsed.Commands = s.Command.Arguments
 		return parsed, validator.Struct(&parsed)
 
 	default:

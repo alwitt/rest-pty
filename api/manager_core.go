@@ -185,9 +185,7 @@ func (c SessionManagerCore) DefineNewSession(
 	}
 
 	// Parse and validate the driver metadata
-	driverMetadata, err := c.resolveDriverMetadata(
-		params.DriverType, params.DriverMetadata, params.Command,
-	)
+	driverMetadata, err := c.resolveDriverMetadata(params.DriverType, params.DriverMetadata)
 	if err != nil {
 		return models.Session{}, err
 	}
@@ -250,14 +248,10 @@ goutils.ValidationError; an unsupported driver type is likewise a validation fai
 
 	@param driverType models.SessionDriverTypeENUMType - the driver type the metadata describes
 	@param rawMetadata json.RawMessage - the raw driver metadata JSON
-	@param command models.SessionCommand - the session command, whose command and arguments
-		become the container entrypoint for a docker driver
 	@returns the validated driver parameter value
 */
 func (c SessionManagerCore) resolveDriverMetadata(
-	driverType models.SessionDriverTypeENUMType,
-	rawMetadata json.RawMessage,
-	command models.SessionCommand,
+	driverType models.SessionDriverTypeENUMType, rawMetadata json.RawMessage,
 ) (interface{}, error) {
 	switch driverType {
 	case models.SessionDriverTypePTY:
@@ -279,12 +273,6 @@ func (c SessionManagerCore) resolveDriverMetadata(
 				"unable to parse DOCKER driver parameters", err, true,
 			)
 		}
-		// The container entrypoint and its arguments are the session command, not part of the
-		// supplied driver metadata; fill them from the command before validation so the
-		// runtime's required Entrypoint is satisfied. This mirrors (Session).ParseDriverMetadata,
-		// which performs the same fill when the driver is later set up.
-		dockerDriverMetadata.Entrypoint = []string{command.Command}
-		dockerDriverMetadata.Commands = command.Arguments
 		if err := c.validate.Struct(&dockerDriverMetadata); err != nil {
 			return nil, goutils.NewValidationError("DOCKER driver parameters not valid", err, true)
 		}
@@ -320,13 +308,7 @@ func (c SessionManagerCore) UpdateSessionDriver(
 ) error {
 	return c.persistence.UseDatabaseInTransaction(
 		ctx, func(ctx context.Context, dbClient db.Database) error {
-			// The session command supplies the container entrypoint for a docker driver, so the
-			// existing session must be read to resolve the new metadata.
-			session, err := dbClient.GetSessionByName(ctx, sessionName)
-			if err != nil {
-				return err
-			}
-			driverMetadata, err := c.resolveDriverMetadata(driverType, rawMetadata, session.Command)
+			driverMetadata, err := c.resolveDriverMetadata(driverType, rawMetadata)
 			if err != nil {
 				return err
 			}
