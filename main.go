@@ -35,7 +35,7 @@ var svrArgs serverArgs
 var logTags log.Fields
 
 // @title rest-pty
-// @version v0.2.2
+// @version v0.3.0
 // @description REST API Wrapper Around PTY
 // @host localhost:38281
 // @BasePath /
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	app := &cli.App{
-		Version:     "v0.2.2",
+		Version:     "v0.3.0",
 		Usage:       "application entrypoint",
 		Description: "REST API wrapper around PTY running custom commands",
 		Flags: []cli.Flag{

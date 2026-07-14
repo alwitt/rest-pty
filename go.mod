@@ -3,7 +3,7 @@ module github.com/alwitt/rest-pty
 go 1.26
 
 require (
-	github.com/alwitt/goutils v0.12.0-rc3
+	github.com/alwitt/goutils v0.12.0
 	github.com/apex/log v1.9.0
 	github.com/creack/pty v1.1.24
 	github.com/go-playground/validator/v10 v10.30.1
