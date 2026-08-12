@@ -202,6 +202,7 @@ func (c SessionManagerCore) DefineNewSession(
 				params.Command,
 				params.OutputBufferCapacity,
 				driverMetadata,
+				params.WorkspaceName,
 			)
 			return err
 		},
@@ -331,6 +332,38 @@ func (c SessionManagerCore) UpdateSessionDescription(
 	return c.persistence.UseDatabaseInTransaction(
 		ctx, func(ctx context.Context, dbClient db.Database) error {
 			return dbClient.UpdateSessionDescription(ctx, sessionName, description)
+		},
+	)
+}
+
+/*
+UpdateSessionWorkspaceName change the cairn workspace assigned to a session. Only permitted on
+IDLE sessions.
+
+The workspace name is charset-validated before the change is applied; whether the session may
+have a workspace at all depends on its driver, which only the persistence layer can see, so a
+workspace named for a non-DOCKER session comes back from there as a goutils.ValidationError.
+
+	@param ctx context.Context - execution context
+	@param sessionName string - the name of the session to update
+	@param workspaceName *string - the new workspace name, or nil to clear the assignment
+	@returns goutils.ValidationError if the workspace name is invalid or the session does not
+		use the DOCKER driver, goutils.NotFoundError if the session is unknown,
+		goutils.ConsistencyError if the session is not in a state allowing the change
+*/
+func (c SessionManagerCore) UpdateSessionWorkspaceName(
+	ctx context.Context, sessionName string, workspaceName *string,
+) error {
+	// Validate the new workspace name; nil clears the assignment
+	if workspaceName != nil {
+		if err := c.validate.Var(*workspaceName, "workspace_name_type"); err != nil {
+			return goutils.NewValidationError("session workspace name is not valid", err, true)
+		}
+	}
+
+	return c.persistence.UseDatabaseInTransaction(
+		ctx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionWorkspaceName(ctx, sessionName, workspaceName)
 		},
 	)
 }

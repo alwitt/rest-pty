@@ -200,12 +200,14 @@ all `v1` routes are relative to the configured `pathPrefix`.
 | Health | `GET /liveness/alive`, `GET /liveness/ready` |
 | Sessions | `POST /v1/sessions`, `GET /v1/sessions` |
 | Session | `GET /v1/sessions/{name}`, `DELETE /v1/sessions/{name}` |
-| Attributes | `PUT /v1/sessions/{name}/{command,driver,name,description,output-buf-cap}` |
+| Attributes | `PUT /v1/sessions/{name}/{command,driver,name,description,output-buf-cap,run-mode,workspace}` |
 | Lifecycle | `POST /v1/sessions/{name}/start`, `POST /v1/sessions/{name}/stop` |
 | Input | `POST /v1/sessions/{name}/io/input/commands` |
 | Output | `GET /v1/sessions/{name}/io/output/{chunk,newest,tail}` |
 
 > Session names may contain only letters, digits, and hyphens (`^[a-zA-Z0-9-]+$`).
+> Workspace names additionally allow underscores (`^[a-zA-Z0-9-_]+$`) — they belong to
+> [`cairn`](https://github.com/alwitt/cairn)'s namespace, not this one.
 
 ### Worked example
 
@@ -302,6 +304,7 @@ advertise the same enumerated values and validation rules).
 | `update_session_command` | Change the command an IDLE session runs |
 | `update_session_name` | Rename a session |
 | `update_session_description` | Change (or clear) a session's description |
+| `update_session_workspace` | Assign (or clear) an IDLE session's shared workspace |
 | `delete_session` | Delete an IDLE session |
 | `start_session` | Start a session (`IDLE` → `READY`), synchronously |
 | `stop_session` | Stop a session (`READY` → `IDLE`), synchronously |
@@ -377,6 +380,22 @@ Example `driver_metadata` for a network-isolated container with a writable scrat
   "environment": [{ "name": "TZ", "value": "UTC" }]
 }
 ```
+
+### Workspaces
+
+A `DOCKER` session may carry an optional `workspace_name` — a shared workspace belonging to
+[`cairn`](https://github.com/alwitt/cairn), which pairs an object store for durable artifacts
+with a Docker named volume for scratch space that several containers share. It is set at create
+time or through `PUT /v1/sessions/{name}/workspace`, and cleared by sending
+`{"workspace_name": null}`. Both are permitted only on an `IDLE` session.
+
+`PTY` sessions may **not** hold one: they run directly against the host filesystem, so there is
+no container to mount a workspace volume into. Assigning a workspace to a PTY session is
+rejected, and moving a session onto the PTY driver clears any workspace it was holding.
+
+> **The assignment is currently recorded only.** rest-pty stores and validates the name; it does
+> not yet resolve it against `cairn` or mount the workspace volume, so no files appear in the
+> container as a result of setting it. Mounting lands in a later change.
 
 ## Development
 

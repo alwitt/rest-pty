@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alwitt/goutils"
+	goutilsRuntime "github.com/alwitt/goutils/runtime"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
@@ -95,6 +96,7 @@ func TestDBCreateSession(t *testing.T) {
 				session0.command,
 				session0.bufCapacity,
 				testDriverParams,
+				nil,
 			)
 			assert.Nil(err)
 			assert.Equal(session0.name, entry.Name)
@@ -116,6 +118,7 @@ func TestDBCreateSession(t *testing.T) {
 				session1.command,
 				session1.bufCapacity,
 				testDriverParams,
+				nil,
 			)
 			return err
 		},
@@ -131,6 +134,7 @@ func TestDBCreateSession(t *testing.T) {
 				session1.command,
 				session1.bufCapacity,
 				testDriverParams,
+				nil,
 			)
 			assert.Nil(err)
 			assert.Equal(session1.name, entry.Name)
@@ -168,6 +172,7 @@ func TestDBCreateSession(t *testing.T) {
 					testCase.command,
 					testCase.bufCap,
 					testDriverParams,
+					nil,
 				)
 				return err
 			},
@@ -176,6 +181,58 @@ func TestDBCreateSession(t *testing.T) {
 		assert.Truef(errors.As(err, &validationErr),
 			"expected ValidationError for case '%s', got %v", testCase.label, err)
 	}
+
+	// Case 6: a DOCKER session may be created with a workspace already assigned
+	dockerDriverParams := models.SessionDriverDockerParams{
+		ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{Image: "alpine:latest"},
+	}
+	workspaceName := "ws-alpha"
+	dockerSessionName := fmt.Sprintf("docker-session-%s", ulid.Make().String())
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			entry, err := dbClient.DefineNewSession(
+				ctx,
+				dockerSessionName,
+				nil,
+				session1.command,
+				16384,
+				dockerDriverParams,
+				&workspaceName,
+			)
+			assert.Nil(err)
+			assert.Equal(workspaceName, *entry.WorkspaceName)
+
+			readBack, err := dbClient.GetSessionByName(ctx, dockerSessionName)
+			assert.Nil(err)
+			assert.Equal(workspaceName, *readBack.WorkspaceName)
+			return nil
+		},
+	))
+
+	// Case 7: a PTY session may not, and nothing is written
+	ptySessionName := fmt.Sprintf("pty-session-%s", ulid.Make().String())
+	createErr := uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			_, err := dbClient.DefineNewSession(
+				ctx,
+				ptySessionName,
+				nil,
+				session1.command,
+				16384,
+				testDriverParams,
+				&workspaceName,
+			)
+			return err
+		},
+	)
+	var workspaceValidationErr goutils.ValidationError
+	assert.True(errors.As(createErr, &workspaceValidationErr))
+	assert.NotNil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			_, err := dbClient.GetSessionByName(ctx, ptySessionName)
+			return err
+		},
+	))
 }
 
 func TestDBUpdateSessionState(t *testing.T) {
@@ -206,6 +263,7 @@ func TestDBUpdateSessionState(t *testing.T) {
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
 				testDriverParams,
+				nil,
 			)
 			assert.Nil(err)
 			// A newly defined session starts in the IDLE state
@@ -299,6 +357,7 @@ func TestDBUpdateBasicSessionParams(t *testing.T) {
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
 				testDriverParams,
+				nil,
 			)
 			assert.Nil(err)
 			assert.Equal(originalName, entry.Name)
@@ -399,7 +458,7 @@ func TestDBUpdateCriticalSessionParams(t *testing.T) {
 	assert.Nil(uut.UseDatabaseInTransaction(
 		utCtx, func(ctx context.Context, dbClient db.Database) error {
 			_, err := dbClient.DefineNewSession(
-				ctx, sessionName, nil, originalCommand, originalCapacity, testDriverParams,
+				ctx, sessionName, nil, originalCommand, originalCapacity, testDriverParams, nil,
 			)
 			return err
 		},
@@ -542,6 +601,7 @@ func TestDBUpdateSessionDriverParameters(t *testing.T) {
 				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 				16384,
 				originalDriverParams,
+				nil,
 			)
 			return err
 		},
@@ -656,6 +716,7 @@ func TestDBDeleteSession(t *testing.T) {
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
 					testDriverParams,
+					nil,
 				)
 				return err
 			},
@@ -760,6 +821,7 @@ func TestDBListSessions(t *testing.T) {
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
 					testDriverParams,
+					nil,
 				)
 				return err
 			},
@@ -849,6 +911,7 @@ func TestDBListSessionsPagination(t *testing.T) {
 					models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
 					16384,
 					testDriverParams,
+					nil,
 				)
 				return err
 			},
@@ -913,4 +976,205 @@ func TestDBListSessionsPagination(t *testing.T) {
 	)
 	var validationErr goutils.ValidationError
 	assert.True(errors.As(invalidErr, &validationErr))
+}
+
+func TestDBUpdateSessionWorkspaceName(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	testDB := fmt.Sprintf("/tmp/rest_pty_ut_%s.db", ulid.Make().String())
+	log.WithField("db", testDB).Debug("Test database")
+
+	uut, err := db.NewConnection(db.GetSqliteDialector(testDB), logger.Error)
+	assert.Nil(err)
+
+	// Prepare the database tables
+	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
+
+	dockerDriverParams := models.SessionDriverDockerParams{
+		ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{Image: "alpine:latest"},
+	}
+	ptyDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
+	dockerSession := "docker-session"
+	ptySession := "pty-session"
+	ptr := func(v string) *string { return &v }
+
+	// Define one DOCKER session and one PTY session to work against
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			if _, err := dbClient.DefineNewSession(
+				ctx,
+				dockerSession,
+				nil,
+				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
+				16384,
+				dockerDriverParams,
+				nil,
+			); err != nil {
+				return err
+			}
+			_, err := dbClient.DefineNewSession(
+				ctx,
+				ptySession,
+				nil,
+				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
+				16384,
+				ptyDriverParams,
+				nil,
+			)
+			return err
+		},
+	))
+
+	// Helper to read back a session's stored workspace name
+	readWorkspace := func(name string) *string {
+		var entry models.Session
+		assert.Nil(uut.UseDatabaseInTransaction(
+			utCtx, func(ctx context.Context, dbClient db.Database) error {
+				var err error
+				entry, err = dbClient.GetSessionByName(ctx, name)
+				return err
+			},
+		))
+		return entry.WorkspaceName
+	}
+
+	updateWorkspace := func(name string, workspace *string) error {
+		return uut.UseDatabaseInTransaction(
+			utCtx, func(ctx context.Context, dbClient db.Database) error {
+				return dbClient.UpdateSessionWorkspaceName(ctx, name, workspace)
+			},
+		)
+	}
+
+	// Case 0: assign a workspace to the IDLE DOCKER session
+	assert.Nil(updateWorkspace(dockerSession, ptr("ws-alpha")))
+	assert.Equal("ws-alpha", *readWorkspace(dockerSession))
+
+	// Case 1: reassign, using the '_' a session name would reject
+	assert.Nil(updateWorkspace(dockerSession, ptr("ws_beta")))
+	assert.Equal("ws_beta", *readWorkspace(dockerSession))
+
+	// Case 2: clear the assignment
+	assert.Nil(updateWorkspace(dockerSession, nil))
+	assert.Nil(readWorkspace(dockerSession))
+
+	// Case 3: an invalid charset is rejected, and nothing is written
+	var validationErr goutils.ValidationError
+	assert.True(errors.As(updateWorkspace(dockerSession, ptr("bad name!")), &validationErr))
+	assert.Nil(readWorkspace(dockerSession))
+
+	// Case 4: the empty string is rejected too - `omitnil` runs the charset check on it where
+	// `omitempty` would skip the check entirely
+	assert.True(errors.As(updateWorkspace(dockerSession, ptr("")), &validationErr))
+	assert.Nil(readWorkspace(dockerSession))
+
+	// Case 5: the change is refused outside of the IDLE state
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.MarkSessionReady(ctx, dockerSession)
+		},
+	))
+	var consistencyErr goutils.ConsistencyError
+	assert.True(errors.As(updateWorkspace(dockerSession, ptr("ws-gamma")), &consistencyErr))
+	assert.Nil(readWorkspace(dockerSession))
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.MarkSessionIdle(ctx, dockerSession)
+		},
+	))
+
+	// Case 6: a PTY session can't hold a workspace, on the update path as well as at create
+	assert.True(errors.As(updateWorkspace(ptySession, ptr("ws-alpha")), &validationErr))
+	assert.Nil(readWorkspace(ptySession))
+
+	// Case 7: unknown session
+	var notFoundErr goutils.NotFoundError
+	assert.True(errors.As(updateWorkspace("no-such-session", ptr("ws-alpha")), &notFoundErr))
+}
+
+func TestDBUpdateSessionDriverClearsWorkspace(t *testing.T) {
+	assert := assert.New(t)
+	log.SetLevel(log.DebugLevel)
+
+	utCtx := context.Background()
+
+	testDB := fmt.Sprintf("/tmp/rest_pty_ut_%s.db", ulid.Make().String())
+	log.WithField("db", testDB).Debug("Test database")
+
+	uut, err := db.NewConnection(db.GetSqliteDialector(testDB), logger.Error)
+	assert.Nil(err)
+
+	// Prepare the database tables
+	assert.Nil(uut.RunSQLInTransaction(utCtx, db.DefineTables))
+
+	dockerDriverParams := models.SessionDriverDockerParams{
+		ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{Image: "alpine:latest"},
+	}
+	ptyDriverParams := models.SessionDriverPTYParams{DisplayRows: 30, DisplayCols: 80}
+
+	sessionName := "driver-flip-session"
+	ptr := func(v string) *string { return &v }
+
+	readSession := func() models.Session {
+		var entry models.Session
+		assert.Nil(uut.UseDatabaseInTransaction(
+			utCtx, func(ctx context.Context, dbClient db.Database) error {
+				var err error
+				entry, err = dbClient.GetSessionByName(ctx, sessionName)
+				return err
+			},
+		))
+		return entry
+	}
+
+	updateDriver := func(driverParams interface{}) error {
+		return uut.UseDatabaseInTransaction(
+			utCtx, func(ctx context.Context, dbClient db.Database) error {
+				return dbClient.UpdateSessionDriver(ctx, sessionName, driverParams)
+			},
+		)
+	}
+
+	// A DOCKER session holding a workspace
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			_, err := dbClient.DefineNewSession(
+				ctx,
+				sessionName,
+				nil,
+				models.SessionCommand{Command: "echo", Arguments: []string{"hello"}},
+				16384,
+				dockerDriverParams,
+				ptr("ws-alpha"),
+			)
+			return err
+		},
+	))
+	assert.Equal("ws-alpha", *readSession().WorkspaceName)
+
+	// Moving to PTY must SUCCEED, silently dropping the workspace rather than being rejected.
+	// Asserting both columns off one read is what catches a partial write.
+	assert.Nil(updateDriver(ptyDriverParams))
+	flipped := readSession()
+	assert.Equal(models.SessionDriverTypePTY, flipped.DriverType)
+	assert.Nil(flipped.WorkspaceName)
+
+	// The assignment is dropped, not stashed for a return trip
+	assert.Nil(updateDriver(dockerDriverParams))
+	restored := readSession()
+	assert.Equal(models.SessionDriverTypeDocker, restored.DriverType)
+	assert.Nil(restored.WorkspaceName)
+
+	// A DOCKER -> DOCKER driver update leaves an existing workspace intact
+	assert.Nil(uut.UseDatabaseInTransaction(
+		utCtx, func(ctx context.Context, dbClient db.Database) error {
+			return dbClient.UpdateSessionWorkspaceName(ctx, sessionName, ptr("ws-delta"))
+		},
+	))
+	assert.Nil(updateDriver(dockerDriverParams))
+	assert.Equal("ws-delta", *readSession().WorkspaceName)
 }

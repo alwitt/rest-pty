@@ -102,6 +102,8 @@ type MCPDefineNewSessionParams struct {
 	OutputBufferCapacity int64 `json:"io_buf_cap" validate:"required,gte=16384" jsonschema:"buffering capacity, in bytes, for holding command output history; must be >= 16384"`
 	// Driver the sandboxed docker container settings for the session
 	Driver MCPDockerDriverSettings `json:"driver" validate:"required" jsonschema:"the sandboxed docker container settings for the session"`
+	// WorkspaceName the cairn workspace to assign to the session
+	WorkspaceName *string `json:"workspace_name,omitempty" validate:"omitnil,workspace_name_type" jsonschema:"name of the cairn workspace to assign to the session; can only contain alphanumeric characters, - and _. Omit to define the session without a workspace."`
 }
 
 // MCPListSessionsParams parameters for the list-sessions tool.
@@ -156,7 +158,28 @@ type MCPUpdateSessionDescriptionParams struct {
 	// SessionName name of the session to update
 	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to update"`
 	// Description new session description, set to null to clear
-	Description *string `json:"description" validate:"omitempty" jsonschema:"new session description, set to null to clear"`
+	Description *string `json:"description,omitempty" validate:"omitempty" jsonschema:"new session description, set to null to clear"`
+}
+
+// MCPUpdateSessionWorkspaceParams parameters for the update-session-workspace tool.
+//
+// Mirrors UpdateSessionWorkspaceRequest (PUT /v1/sessions/{sessionName}/workspace). Only
+// permitted on IDLE sessions.
+//
+// WorkspaceName carries `omitempty` so it stays OPTIONAL in the emitted schema, which is what
+// makes clearing an assignment expressible: a required property has its inferred
+// ["null", "string"] type collapsed to a plain "string", and the SDK validates arguments
+// against that schema before this tool runs - so neither omitting it nor sending null would
+// reach the handler.
+//
+// The DOCKER-only rule is unreachable from here by construction: define_new_session hard-codes
+// the DOCKER driver and there is no MCP tool to change a session's driver. Adding one would
+// make this tool able to fail with "not a DOCKER session".
+type MCPUpdateSessionWorkspaceParams struct {
+	// SessionName name of the session to update
+	SessionName string `json:"session_name" validate:"required" jsonschema:"name of the session to update"`
+	// WorkspaceName new workspace name; omit or send null to clear the assignment
+	WorkspaceName *string `json:"workspace_name,omitempty" validate:"omitnil,workspace_name_type" jsonschema:"name of the cairn workspace to assign; can only contain alphanumeric characters, - and _. Omit or set to null to clear the assignment."`
 }
 
 // MCPDeleteSessionParams parameters for the delete-session tool.
@@ -264,6 +287,8 @@ type MCPSession struct {
 	State models.SessionStateENUMType `json:"state" jsonschema:"state of the session [IDLE, READY]"`
 	// DriverType indicate which driver the session uses
 	DriverType models.SessionDriverTypeENUMType `json:"driver" jsonschema:"indicate which driver the session uses"`
+	// WorkspaceName the cairn workspace assigned to the session
+	WorkspaceName *string `json:"workspace_name" jsonschema:"the cairn workspace assigned to the session; null when none is assigned"`
 	// OutputBufferCapacity buffering capacity for holding command output history
 	OutputBufferCapacity int64 `json:"io_buf_cap" jsonschema:"buffering capacity for holding command output history"`
 	// RunnerMode session runner operating mode
@@ -284,6 +309,7 @@ func mcpSessionFrom(s models.Session) MCPSession {
 		Command:              s.Command,
 		State:                s.State,
 		DriverType:           s.DriverType,
+		WorkspaceName:        s.WorkspaceName,
 		OutputBufferCapacity: s.OutputBufferCapacity,
 		RunnerMode:           s.RunnerMode,
 		CreatedAt:            s.CreatedAt,
@@ -411,6 +437,7 @@ func (h MCPHandler) RegisterTools(server *mcp.Server) error {
 		h.registerUpdateSessionCommandTool,
 		h.registerUpdateSessionNameTool,
 		h.registerUpdateSessionDescriptionTool,
+		h.registerUpdateSessionWorkspaceTool,
 		h.registerDeleteSessionTool,
 		h.registerStartSessionTool,
 		h.registerStopSessionTool,

@@ -113,6 +113,15 @@ type Session struct {
 	// DriverMetadata metadata relating to the session driver
 	DriverMetadata datatypes.JSON `json:"driver_metadata,omitempty" gorm:"column:driver_metadata;default:null" swaggertype:"string"`
 
+	// WorkspaceName the cairn workspace assigned to the session. Only valid for DOCKER driver
+	// sessions - a PTY session runs against the host filesystem, so there is no container to
+	// mount a workspace volume into. Nil when no workspace is assigned.
+	//
+	// This is the name cairn holds, not a resolved workspace: rest-pty is a mount-only cairn
+	// client, so it stores the name it was given and never derives the volume name or touches
+	// the workspace lifecycle itself.
+	WorkspaceName *string `json:"workspace_name" gorm:"column:workspace_name;default:null" validate:"omitnil,workspace_name_type" jsonschema:"name of the cairn workspace assigned to the session; only valid for DOCKER driver sessions"`
+
 	// OutputBufferCapacity buffering capacity for holding command output history
 	OutputBufferCapacity int64 `json:"io_buf_cap" gorm:"column:io_buf_cap;not null" validate:"required,gte=16384" jsonschema:"buffering capacity for holding command output history"`
 

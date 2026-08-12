@@ -48,6 +48,8 @@ type Database interface {
 			@param outputBufferCapacity int64 - buffering capacity for holding command output history
 			@param driverParams interface{} - session driver parameters, allowed types are:
 			    * SessionDriverPTYParams
+			@param workspaceName *string - the cairn workspace to assign, or nil for none. Only
+			    valid for DOCKER driver sessions.
 			@returns new session entry
 			@returns `models.ValidationError` bad data
 			@returns `models.PersistenceError` persistence layer failure
@@ -59,6 +61,7 @@ type Database interface {
 		command models.SessionCommand,
 		outputBufferCapacity int64,
 		driverParams interface{},
+		workspaceName *string,
 	) (models.Session, error)
 
 	/*
@@ -174,6 +177,24 @@ type Database interface {
 			@returns `models.PersistenceError` persistence layer failure
 	*/
 	UpdateSessionDescription(ctx context.Context, name string, newDescription *string) error
+
+	/*
+		UpdateSessionWorkspaceName change the cairn workspace assigned to a session
+
+		A workspace is only valid for DOCKER driver sessions. Pass nil to clear the assignment.
+
+		This can only be performed on IDLE sessions.
+
+			@param ctx context.Context - execution context
+			@param name string - session name
+			@param newWorkspaceName *string - new workspace name, or nil to clear the assignment
+			@returns `models.UnknownSessionError` if session is unknown
+			@returns `models.ConsistencyError` session in wrong state
+			@returns `models.ValidationError` workspace name is invalid, or the session does not
+			    use the DOCKER driver
+			@returns `models.PersistenceError` persistence layer failure
+	*/
+	UpdateSessionWorkspaceName(ctx context.Context, name string, newWorkspaceName *string) error
 
 	/*
 		DeleteSession delete a session

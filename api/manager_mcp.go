@@ -47,6 +47,7 @@ func (h MCPHandler) registerDefineNewSessionTool(server *mcp.Server) error {
 				OutputBufferCapacity: in.OutputBufferCapacity,
 				DriverType:           models.SessionDriverTypeDocker,
 				DriverMetadata:       driverMetadata,
+				WorkspaceName:        in.WorkspaceName,
 			})
 			if err != nil {
 				exitErr := goutils.NewRuntimeError("Failed to define new session", err, true)
@@ -215,6 +216,42 @@ func (h MCPHandler) registerUpdateSessionDescriptionTool(server *mcp.Server) err
 			}
 
 			return goutils.MCPTextResult("session '" + in.SessionName + "' description updated"), nil, nil
+		},
+	)
+}
+
+// registerUpdateSessionWorkspaceTool register the update-session-workspace tool. Only permitted
+// on IDLE sessions.
+func (h MCPHandler) registerUpdateSessionWorkspaceTool(server *mcp.Server) error {
+	toolName := "update_session_workspace"
+	toolDescription :=
+		"Assign a shared workspace to an IDLE session, so the session can read and write " +
+			"artifacts held in that workspace. Omit the workspace name to clear the assignment."
+
+	return goutils.MCPAddTool(
+		&h.MCPHandler,
+		server,
+		&mcp.Tool{Name: toolName, Description: toolDescription},
+		func(
+			ctx context.Context, _ *mcp.CallToolRequest, in MCPUpdateSessionWorkspaceParams,
+		) (*mcp.CallToolResult, any, error) {
+			if err := h.manage.UpdateSessionWorkspaceName(
+				ctx, in.SessionName, in.WorkspaceName,
+			); err != nil {
+				exitErr := goutils.NewRuntimeError(
+					"Failed to update session "+in.SessionName+" workspace", err, true,
+				)
+				return nil, nil, exitErr
+			}
+
+			if in.WorkspaceName == nil {
+				return goutils.MCPTextResult(
+					"session '" + in.SessionName + "' workspace assignment cleared",
+				), nil, nil
+			}
+			return goutils.MCPTextResult(
+				"session '" + in.SessionName + "' assigned to workspace '" + *in.WorkspaceName + "'",
+			), nil, nil
 		},
 	)
 }

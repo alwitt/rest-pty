@@ -24,6 +24,8 @@ DefineNewSession define a new session
 	@param outputBufferCapacity int64 - buffering capacity for holding command output history
 	@param driverParams interface{} - session driver parameters, allowed types are:
 	    * SessionDriverPTYParams
+	@param workspaceName *string - the cairn workspace to assign, or nil for none. Only valid
+	    for DOCKER driver sessions.
 	@returns new session entry
 	@returns `goutils.ValidationError` bad data
 	@returns `models.PersistenceError` persistence layer failure
@@ -35,6 +37,7 @@ func (d *databaseImpl) DefineNewSession(
 	command models.SessionCommand,
 	outputBufferCapacity int64,
 	driverParams interface{},
+	workspaceName *string,
 ) (models.Session, error) {
 	var driverType models.SessionDriverTypeENUMType
 	switch driverParams.(type) {
@@ -65,6 +68,7 @@ func (d *databaseImpl) DefineNewSession(
 			OutputBufferCapacity: outputBufferCapacity,
 			DriverType:           driverType,
 			DriverMetadata:       datatypes.JSON(driverMetadataStr),
+			WorkspaceName:        workspaceName,
 			RunnerMode:           models.SessionRunnerModeTypeCommanded,
 		},
 	}
@@ -337,14 +341,27 @@ func (d *databaseImpl) UpdateSessionDriver(
 
 	entry.DriverType = driverType
 	entry.DriverMetadata = datatypes.JSON(driverMetadataStr)
+	// A workspace is a cairn concept only a DOCKER session can use, so moving a session onto
+	// another driver silently drops any workspace assignment rather than rejecting the change:
+	// the caller asked to change the driver, not to keep a workspace. Cleared BEFORE the entry
+	// is validated so the DOCKER-only rule in models.validateSession never fires on this path.
+	if driverType != models.SessionDriverTypeDocker {
+		entry.WorkspaceName = nil
+	}
 	if err := d.validator.Struct(&entry); err != nil {
 		return goutils.NewValidationError(" new session "+name+" driver params is invalid", err, true)
 	}
 
 	tmp := d.db.Model(&sessionEntry{}).
 		Where("id = ?", entry.ID).
-		Update("driver", driverType).
-		Update("driver_metadata", datatypes.JSON(driverMetadataStr))
+		// A map, not a struct: GORM's struct path skips zero values, so a struct here would
+		// silently fail to clear workspace_name and leave a PTY session holding a workspace.
+		// One statement also keeps the three columns from drifting apart on a partial failure.
+		Updates(map[string]interface{}{
+			"driver":          driverType,
+			"driver_metadata": datatypes.JSON(driverMetadataStr),
+			"workspace_name":  entry.WorkspaceName,
+		})
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new driver params", tmp.Error, true,
@@ -408,6 +425,60 @@ func (d *databaseImpl) UpdateSessionDescription(
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new description", tmp.Error, true,
+		)
+	}
+
+	return nil
+}
+
+/*
+UpdateSessionWorkspaceName change the cairn workspace assigned to a session
+
+A workspace is only valid for DOCKER driver sessions. Pass nil to clear the assignment.
+
+This can only be performed on IDLE sessions.
+
+	@param ctx context.Context - execution context
+	@param name string - session name
+	@param newWorkspaceName *string - new workspace name, or nil to clear the assignment
+	@returns `models.UnknownSessionError` if session is unknown
+	@returns `goutils.ConsistencyError` session in wrong state
+	@returns `goutils.ValidationError` workspace name is invalid, or the session does not use
+	    the DOCKER driver
+	@returns `models.PersistenceError` persistence layer failure
+*/
+func (d *databaseImpl) UpdateSessionWorkspaceName(
+	_ context.Context, name string, newWorkspaceName *string,
+) error {
+	entry, err := d.getSessionEntryByName(name)
+	if err != nil {
+		return err
+	}
+
+	if entry.State != models.SessionStateIdle {
+		return goutils.NewConsistencyError(
+			"can't change session '"+name+"' workspace outside of IDLE state", nil, true,
+		)
+	}
+
+	// Validating the whole entry is what enforces the DOCKER-only rule: it needs the stored
+	// driver type, which only this layer can see.
+	entry.WorkspaceName = newWorkspaceName
+	if err := d.validator.Struct(&entry); err != nil {
+		return goutils.NewValidationError(
+			"new session "+name+" workspace name is invalid", err, true,
+		)
+	}
+
+	tmp := d.db.
+		Model(&sessionEntry{}).
+		Where("id = ?", entry.ID).
+		Update("workspace_name", newWorkspaceName)
+	if tmp.Error != nil {
+		return models.NewPersistenceError(
+			"failed to record session '"+entry.Name+"'["+entry.ID+"] new workspace name",
+			tmp.Error,
+			true,
 		)
 	}
 

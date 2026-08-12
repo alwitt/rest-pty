@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -198,6 +199,7 @@ func TestSessionManagerHandlerDefineNewSession(t *testing.T) {
 				mock.Anything,
 				int64(16384),
 				mock.Anything,
+				mock.Anything,
 			).
 			Return(expected, nil).
 			Once()
@@ -288,6 +290,7 @@ func TestSessionManagerHandlerDefineNewSession(t *testing.T) {
 			EXPECT().
 			DefineNewSession(
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything,
 			).
 			Return(models.Session{}, models.NewPersistenceError("dummy error", nil, false)).
 			Once()
@@ -303,6 +306,92 @@ func TestSessionManagerHandlerDefineNewSession(t *testing.T) {
 		router.ServeHTTP(respRecorder, req)
 
 		assert.Equal(http.StatusInternalServerError, respRecorder.Code)
+	})
+
+	// serveCreate helper to POST one create request and return the recorder
+	serveCreate := func(
+		assert *assert.Assertions, uut api.SessionManagerHandler, body io.Reader,
+	) *httptest.ResponseRecorder {
+		req, err := http.NewRequest("POST", "/v1/sessions", body)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc("/v1/sessions", uut.LoggingMiddleware(uut.DefineNewSession))
+		router.ServeHTTP(respRecorder, req)
+		return respRecorder
+	}
+
+	// Case 3: a workspace named at create time is forwarded to the persistence layer
+	t.Run("workspace forwarded", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		workspaceName := "ws-alpha"
+		request := validRequest()
+		request.DriverType = models.SessionDriverTypeDocker
+		request.DriverMetadata = json.RawMessage(`{"image": "alpine:latest"}`)
+		request.WorkspaceName = &workspaceName
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			DefineNewSession(
+				mock.Anything,
+				"test-session",
+				mock.Anything,
+				mock.Anything,
+				int64(16384),
+				mock.Anything,
+				mock.MatchedBy(func(w *string) bool { return w != nil && *w == workspaceName }),
+			).
+			Return(sampleSession("test-session"), nil).
+			Once()
+
+		assert.Equal(http.StatusOK, serveCreate(assert, uut, jsonBody(assert, request)).Code)
+	})
+
+	// Case 4: a bad charset is rejected before the request reaches persistence. No transaction
+	// and no DB expectation is registered, so mockery fails the test if either is used.
+	t.Run("invalid workspace name", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		workspaceName := "bad name!"
+		request := validRequest()
+		request.WorkspaceName = &workspaceName
+
+		assert.Equal(
+			http.StatusBadRequest, serveCreate(assert, uut, jsonBody(assert, request)).Code,
+		)
+	})
+
+	// Case 5: a workspace on a PTY session is only detectable in the DB layer, and must land on
+	// 400 rather than the 500 default arm
+	t.Run("pty session with workspace", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		workspaceName := "ws-alpha"
+		request := validRequest()
+		request.WorkspaceName = &workspaceName
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			DefineNewSession(
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything,
+			).
+			Return(models.Session{}, goutils.NewValidationError("not docker", nil, false)).
+			Once()
+
+		assert.Equal(
+			http.StatusBadRequest, serveCreate(assert, uut, jsonBody(assert, request)).Code,
+		)
 	})
 }
 
@@ -1261,6 +1350,127 @@ func TestSessionManagerHandlerUpdateSessionDescription(t *testing.T) {
 
 		assert.Equal(http.StatusNotFound, respRecorder.Code)
 	})
+}
+
+func TestSessionManagerHandlerUpdateSessionWorkspaceName(t *testing.T) {
+	log.SetLevel(log.DebugLevel)
+
+	route := "/v1/sessions/{sessionName}/workspace"
+	url := "/v1/sessions/test-session/workspace"
+
+	// serve helper to run one request against the handler under test
+	serve := func(
+		assert *assert.Assertions, uut api.SessionManagerHandler, body io.Reader,
+	) *httptest.ResponseRecorder {
+		req, err := http.NewRequest("PUT", url, body)
+		assert.Nil(err)
+
+		router := mux.NewRouter()
+		respRecorder := httptest.NewRecorder()
+		router.HandleFunc(route, uut.LoggingMiddleware(uut.UpdateSessionWorkspaceName))
+		router.ServeHTTP(respRecorder, req)
+		return respRecorder
+	}
+
+	// Case 0: assign a workspace successfully
+	t.Run("success", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		newWorkspace := "ws-alpha"
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			UpdateSessionWorkspaceName(
+				mock.Anything, "test-session", mock.MatchedBy(func(w *string) bool {
+					return w != nil && *w == newWorkspace
+				}),
+			).
+			Return(nil).
+			Once()
+
+		respRecorder := serve(assert, uut, jsonBody(
+			assert, api.UpdateSessionWorkspaceRequest{WorkspaceName: &newWorkspace},
+		))
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 1: a null workspace name clears the assignment
+	t.Run("clear workspace", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		testMocks.passthroughTransaction()
+		testMocks.database.
+			EXPECT().
+			UpdateSessionWorkspaceName(
+				mock.Anything, "test-session", mock.MatchedBy(func(w *string) bool {
+					return w == nil
+				}),
+			).
+			Return(nil).
+			Once()
+
+		respRecorder := serve(assert, uut, bytes.NewReader([]byte(`{"workspace_name": null}`)))
+		assert.Equal(http.StatusOK, respRecorder.Code)
+	})
+
+	// Case 2: a bad charset is rejected before the request reaches persistence. No transaction
+	// and no DB expectation is registered, so mockery fails the test if either is used.
+	t.Run("invalid workspace name", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		respRecorder := serve(assert, uut, bytes.NewReader([]byte(`{"workspace_name": "bad name!"}`)))
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Case 3: unparsable payload is rejected
+	t.Run("malformed payload", func(t *testing.T) {
+		assert := assert.New(t)
+		testMocks := newAPIHandlerTestMocks(t)
+		uut := buildSessionManagerHandler(assert, testMocks)
+
+		respRecorder := serve(assert, uut, bytes.NewReader([]byte("{bad")))
+		assert.Equal(http.StatusBadRequest, respRecorder.Code)
+	})
+
+	// Cases 4-6: the persistence-layer refusals each map to their own status code
+	errorCases := []struct {
+		label    string
+		dbError  error
+		expected int
+	}{
+		{"unknown session", goutils.NewNotFoundError("unknown", nil, false), http.StatusNotFound},
+		{"session not idle", goutils.NewConsistencyError("not idle", nil, false), http.StatusConflict},
+		// A workspace on a non-DOCKER session is only detectable in the DB layer, which has the
+		// stored driver type. It must land on 400, not the 500 default arm.
+		{"non docker session", goutils.NewValidationError("not docker", nil, false),
+			http.StatusBadRequest},
+	}
+	for _, testCase := range errorCases {
+		t.Run(testCase.label, func(t *testing.T) {
+			assert := assert.New(t)
+			testMocks := newAPIHandlerTestMocks(t)
+			uut := buildSessionManagerHandler(assert, testMocks)
+
+			newWorkspace := "ws-alpha"
+			testMocks.passthroughTransaction()
+			testMocks.database.
+				EXPECT().
+				UpdateSessionWorkspaceName(mock.Anything, mock.Anything, mock.Anything).
+				Return(testCase.dbError).
+				Once()
+
+			respRecorder := serve(assert, uut, jsonBody(
+				assert, api.UpdateSessionWorkspaceRequest{WorkspaceName: &newWorkspace},
+			))
+			assert.Equal(testCase.expected, respRecorder.Code)
+		})
+	}
 }
 
 func TestSessionManagerHandlerDeleteSession(t *testing.T) {

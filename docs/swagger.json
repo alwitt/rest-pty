@@ -1282,6 +1282,83 @@
                     }
                 }
             }
+        },
+        "/v1/sessions/{sessionName}/workspace": {
+            "put": {
+                "description": "Change the cairn workspace assigned to a session. Only permitted on IDLE\nsessions, and only on sessions using the DOCKER driver. Set the workspace name\nto null to clear the assignment.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "management"
+                ],
+                "summary": "Change session workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "X-Request-ID",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session name",
+                        "name": "sessionName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New session workspace",
+                        "name": "param",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UpdateSessionWorkspaceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "$ref": "#/definitions/goutils.RestAPIBaseResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1404,6 +1481,15 @@
         },
         "api.UpdateSessionDriverRequest": {
             "type": "object"
+        },
+        "api.UpdateSessionWorkspaceRequest": {
+            "type": "object",
+            "properties": {
+                "workspace_name": {
+                    "description": "WorkspaceName new workspace name, set to null to clear the assignment",
+                    "type": "string"
+                }
+            }
         },
         "api.UserCommandRequest": {
             "type": "object",
@@ -1537,6 +1623,10 @@
                 },
                 "updated_at": {
                     "description": "UpdatedAt entry update timestamp",
+                    "type": "string"
+                },
+                "workspace_name": {
+                    "description": "WorkspaceName the cairn workspace assigned to the session. Only valid for DOCKER driver\nsessions - a PTY session runs against the host filesystem, so there is no container to\nmount a workspace volume into. Nil when no workspace is assigned.\n\nThis is the name cairn holds, not a resolved workspace: rest-pty is a mount-only cairn\nclient, so it stores the name it was given and never derives the volume name or touches\nthe workspace lifecycle itself.",
                     "type": "string"
                 }
             }

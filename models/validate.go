@@ -28,6 +28,12 @@ func RegisterWithValidator(v *validator.Validate) error {
 		return err
 	}
 
+	if err := v.RegisterValidation(
+		"workspace_name_type", validateWorkspaceNameType,
+	); err != nil {
+		return err
+	}
+
 	if err := goutils.RegisterENUMInValidator(
 		v, "session_driver_type", goutils.ValidateStringENUM[SessionDriverTypeENUMType](),
 	); err != nil {
@@ -52,10 +58,31 @@ func RegisterWithValidator(v *validator.Validate) error {
 		return err
 	}
 
+	v.RegisterStructValidation(validateSession, Session{})
 	v.RegisterStructValidation(validateSessionInputCommand, SessionInputCommand{})
 	v.RegisterStructValidation(validateSessionDriverDockerParams, SessionDriverDockerParams{})
 
 	return goutils.RegisterWithValidator(v)
+}
+
+// validateSession struct-level validation for Session, enforcing the relationship between the
+// driver type and the workspace assignment.
+//
+// A workspace is a cairn concept pairing an object store with a Docker named volume, so it is
+// only meaningful for a DOCKER driver session: a PTY session runs directly against the host
+// filesystem and has no container to mount the volume into. Expressed as a struct-level rule
+// rather than a conditional field tag, matching every other cross-field rule in this package.
+func validateSession(sl validator.StructLevel) {
+	session := sl.Current().Interface().(Session)
+	if session.WorkspaceName != nil && session.DriverType != SessionDriverTypeDocker {
+		sl.ReportError(
+			session.WorkspaceName,
+			"WorkspaceName",
+			"WorkspaceName",
+			"workspace_name is only valid for DOCKER driver sessions",
+			"",
+		)
+	}
 }
 
 // validateSessionInputCommand struct-level validation for SessionInputCommand,
@@ -100,4 +127,21 @@ func validateSessionNameType(fl validator.FieldLevel) bool {
 		return false
 	}
 	return validSessionNameREGEX.MatchString(fl.Field().String())
+}
+
+// validWorkspaceNameREGEX the charset a cairn workspace name may use. Deliberately identical
+// to cairn's `valid_name` so the two services agree on what a workspace name is; rest-pty
+// resolves this name against cairn, so a charset rest-pty accepts but cairn does not would
+// only surface as a confusing lookup failure later.
+//
+// Note this is NOT validSessionNameREGEX: a session name forbids `_`, a workspace name allows
+// it. The two namespaces are owned by different services and must not be conflated.
+var validWorkspaceNameREGEX = regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
+
+// validateWorkspaceNameType whether a field is a cairn workspace name of the permitted charset
+func validateWorkspaceNameType(fl validator.FieldLevel) bool {
+	if fl.Field().Kind() != reflect.String {
+		return false
+	}
+	return validWorkspaceNameREGEX.MatchString(fl.Field().String())
 }

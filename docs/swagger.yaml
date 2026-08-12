@@ -82,6 +82,12 @@ definitions:
     type: object
   api.UpdateSessionDriverRequest:
     type: object
+  api.UpdateSessionWorkspaceRequest:
+    properties:
+      workspace_name:
+        description: WorkspaceName new workspace name, set to null to clear the assignment
+        type: string
+    type: object
   api.UserCommandRequest:
     properties:
       commands:
@@ -165,6 +171,16 @@ definitions:
         description: State of the session
       updated_at:
         description: UpdatedAt entry update timestamp
+        type: string
+      workspace_name:
+        description: |-
+          WorkspaceName the cairn workspace assigned to the session. Only valid for DOCKER driver
+          sessions - a PTY session runs against the host filesystem, so there is no container to
+          mount a workspace volume into. Nil when no workspace is assigned.
+
+          This is the name cairn holds, not a resolved workspace: rest-pty is a mount-only cairn
+          client, so it stores the name it was given and never derives the volume name or touches
+          the workspace lifecycle itself.
         type: string
     required:
     - command
@@ -1115,6 +1131,60 @@ paths:
           schema:
             $ref: '#/definitions/goutils.RestAPIBaseResponse'
       summary: Stop a session
+      tags:
+      - management
+  /v1/sessions/{sessionName}/workspace:
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Change the cairn workspace assigned to a session. Only permitted on IDLE
+        sessions, and only on sessions using the DOCKER driver. Set the workspace name
+        to null to clear the assignment.
+      parameters:
+      - description: Request ID
+        in: header
+        name: X-Request-ID
+        type: string
+      - description: Session name
+        in: path
+        name: sessionName
+        required: true
+        type: string
+      - description: New session workspace
+        in: body
+        name: param
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateSessionWorkspaceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: success
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "400":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "403":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "404":
+          description: error
+          schema:
+            type: string
+        "409":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+        "500":
+          description: error
+          schema:
+            $ref: '#/definitions/goutils.RestAPIBaseResponse'
+      summary: Change session workspace
       tags:
       - management
 swagger: "2.0"

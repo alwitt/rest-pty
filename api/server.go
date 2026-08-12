@@ -131,6 +131,9 @@ func BuildHTTPServer(
 	_ = registerPathPrefix(perSessionRouter, "/description", map[string]http.HandlerFunc{
 		"put": managerAPI.UpdateSessionDescription,
 	})
+	_ = registerPathPrefix(perSessionRouter, "/workspace", map[string]http.HandlerFunc{
+		"put": managerAPI.UpdateSessionWorkspaceName,
+	})
 
 	// Life cycle management
 	_ = registerPathPrefix(perSessionRouter, "/start", map[string]http.HandlerFunc{

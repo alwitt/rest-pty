@@ -40,8 +40,8 @@ func (_m *Database) EXPECT() *Database_Expecter {
 }
 
 // DefineNewSession provides a mock function for the type Database
-func (_mock *Database) DefineNewSession(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{}) (models.Session, error) {
-	ret := _mock.Called(ctx, name, description, command, outputBufferCapacity, driverParams)
+func (_mock *Database) DefineNewSession(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{}, workspaceName *string) (models.Session, error) {
+	ret := _mock.Called(ctx, name, description, command, outputBufferCapacity, driverParams, workspaceName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DefineNewSession")
@@ -49,16 +49,16 @@ func (_mock *Database) DefineNewSession(ctx context.Context, name string, descri
 
 	var r0 models.Session
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}) (models.Session, error)); ok {
-		return returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}, *string) (models.Session, error)); ok {
+		return returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams, workspaceName)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}) models.Session); ok {
-		r0 = returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}, *string) models.Session); ok {
+		r0 = returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams, workspaceName)
 	} else {
 		r0 = ret.Get(0).(models.Session)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}) error); ok {
-		r1 = returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, models.SessionCommand, int64, interface{}, *string) error); ok {
+		r1 = returnFunc(ctx, name, description, command, outputBufferCapacity, driverParams, workspaceName)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -77,11 +77,12 @@ type Database_DefineNewSession_Call struct {
 //   - command models.SessionCommand
 //   - outputBufferCapacity int64
 //   - driverParams interface{}
-func (_e *Database_Expecter) DefineNewSession(ctx interface{}, name interface{}, description interface{}, command interface{}, outputBufferCapacity interface{}, driverParams interface{}) *Database_DefineNewSession_Call {
-	return &Database_DefineNewSession_Call{Call: _e.mock.On("DefineNewSession", ctx, name, description, command, outputBufferCapacity, driverParams)}
+//   - workspaceName *string
+func (_e *Database_Expecter) DefineNewSession(ctx interface{}, name interface{}, description interface{}, command interface{}, outputBufferCapacity interface{}, driverParams interface{}, workspaceName interface{}) *Database_DefineNewSession_Call {
+	return &Database_DefineNewSession_Call{Call: _e.mock.On("DefineNewSession", ctx, name, description, command, outputBufferCapacity, driverParams, workspaceName)}
 }
 
-func (_c *Database_DefineNewSession_Call) Run(run func(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{})) *Database_DefineNewSession_Call {
+func (_c *Database_DefineNewSession_Call) Run(run func(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{}, workspaceName *string)) *Database_DefineNewSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -107,6 +108,10 @@ func (_c *Database_DefineNewSession_Call) Run(run func(ctx context.Context, name
 		if args[5] != nil {
 			arg5 = args[5].(interface{})
 		}
+		var arg6 *string
+		if args[6] != nil {
+			arg6 = args[6].(*string)
+		}
 		run(
 			arg0,
 			arg1,
@@ -114,6 +119,7 @@ func (_c *Database_DefineNewSession_Call) Run(run func(ctx context.Context, name
 			arg3,
 			arg4,
 			arg5,
+			arg6,
 		)
 	})
 	return _c
@@ -124,7 +130,7 @@ func (_c *Database_DefineNewSession_Call) Return(session models.Session, err err
 	return _c
 }
 
-func (_c *Database_DefineNewSession_Call) RunAndReturn(run func(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{}) (models.Session, error)) *Database_DefineNewSession_Call {
+func (_c *Database_DefineNewSession_Call) RunAndReturn(run func(ctx context.Context, name string, description *string, command models.SessionCommand, outputBufferCapacity int64, driverParams interface{}, workspaceName *string) (models.Session, error)) *Database_DefineNewSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -852,6 +858,69 @@ func (_c *Database_UpdateSessionRunMode_Call) Return(err error) *Database_Update
 }
 
 func (_c *Database_UpdateSessionRunMode_Call) RunAndReturn(run func(ctx context.Context, name string, newMode models.SessionRunnerModeTypeENUMType) error) *Database_UpdateSessionRunMode_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateSessionWorkspaceName provides a mock function for the type Database
+func (_mock *Database) UpdateSessionWorkspaceName(ctx context.Context, name string, newWorkspaceName *string) error {
+	ret := _mock.Called(ctx, name, newWorkspaceName)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSessionWorkspaceName")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string) error); ok {
+		r0 = returnFunc(ctx, name, newWorkspaceName)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// Database_UpdateSessionWorkspaceName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSessionWorkspaceName'
+type Database_UpdateSessionWorkspaceName_Call struct {
+	*mock.Call
+}
+
+// UpdateSessionWorkspaceName is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+//   - newWorkspaceName *string
+func (_e *Database_Expecter) UpdateSessionWorkspaceName(ctx interface{}, name interface{}, newWorkspaceName interface{}) *Database_UpdateSessionWorkspaceName_Call {
+	return &Database_UpdateSessionWorkspaceName_Call{Call: _e.mock.On("UpdateSessionWorkspaceName", ctx, name, newWorkspaceName)}
+}
+
+func (_c *Database_UpdateSessionWorkspaceName_Call) Run(run func(ctx context.Context, name string, newWorkspaceName *string)) *Database_UpdateSessionWorkspaceName_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 *string
+		if args[2] != nil {
+			arg2 = args[2].(*string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *Database_UpdateSessionWorkspaceName_Call) Return(err error) *Database_UpdateSessionWorkspaceName_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *Database_UpdateSessionWorkspaceName_Call) RunAndReturn(run func(ctx context.Context, name string, newWorkspaceName *string) error) *Database_UpdateSessionWorkspaceName_Call {
 	_c.Call.Return(run)
 	return _c
 }

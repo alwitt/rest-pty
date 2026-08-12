@@ -150,6 +150,8 @@ type NewSessionRequest struct {
 	DriverType models.SessionDriverTypeENUMType `json:"driver" validate:"required,session_driver_type"`
 	// DriverMetadata metadata relating to the session driver
 	DriverMetadata json.RawMessage `json:"driver_metadata,omitempty"`
+	// WorkspaceName the cairn workspace to assign to the session; only valid for DOCKER sessions
+	WorkspaceName *string `json:"workspace_name,omitempty" validate:"omitnil,workspace_name_type"`
 }
 
 // SessionEntryResponse response containing information for one session
@@ -1011,6 +1013,128 @@ func (h SessionManagerHandler) UpdateSessionDescription(w http.ResponseWriter, r
 		log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
 		respCode = http.StatusInternalServerError
 		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		return
+	}
+
+	// Report success
+	respCode = http.StatusOK
+	response = h.GetStdRESTSuccessMsg(r.Context())
+}
+
+// ======================================================================================
+// Session CRUD - Update Session Workspace
+
+// UpdateSessionWorkspaceRequest parameters to change the cairn workspace assigned to a session
+type UpdateSessionWorkspaceRequest struct {
+	// WorkspaceName new workspace name, set to null to clear the assignment
+	WorkspaceName *string `json:"workspace_name" validate:"omitnil,workspace_name_type"`
+}
+
+// UpdateSessionWorkspaceName godoc
+// @Summary Change session workspace
+// @Description Change the cairn workspace assigned to a session. Only permitted on IDLE
+// @Description sessions, and only on sessions using the DOCKER driver. Set the workspace name
+// @Description to null to clear the assignment.
+// @tags management
+// @Accept json
+// @Produce json
+// @Param X-Request-ID header string false "Request ID"
+// @Param sessionName path string true "Session name"
+// @Param param body UpdateSessionWorkspaceRequest true "New session workspace"
+// @Success 200 {object} goutils.RestAPIBaseResponse "success"
+// @Failure 400 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 403 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 404 {string} string "error"
+// @Failure 409 {object} goutils.RestAPIBaseResponse "error"
+// @Failure 500 {object} goutils.RestAPIBaseResponse "error"
+// @Router /v1/sessions/{sessionName}/workspace [put]
+func (h SessionManagerHandler) UpdateSessionWorkspaceName(
+	w http.ResponseWriter, r *http.Request,
+) {
+	var respCode int
+	var response interface{}
+	logTags := h.GetLogTagsForContext(r.Context())
+	defer func() {
+		if err := h.WriteRESTResponse(w, respCode, response, nil); err != nil {
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Failed to form response")
+		}
+	}()
+
+	sessionName := mux.Vars(r)["sessionName"]
+
+	if r.Body == nil {
+		msg := "No payload provided to update session workspace"
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, msg)
+		return
+	}
+
+	// Parse the new workspace assignment
+	var params UpdateSessionWorkspaceRequest
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		msg := "Unable to parse new session workspace from request"
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		return
+	}
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			log.
+				WithError(err).
+				WithFields(goutils.UpdateCodePositionInTags(logTags)).
+				Error("Request body close error")
+		}
+	}()
+
+	{
+		t, _ := json.Marshal(&params)
+		log.WithFields(goutils.UpdateCodePositionInTags(logTags)).
+			WithField("new-workspace", string(t)).Debug("Updating session workspace")
+	}
+
+	// Validate parameters
+	if err := h.core.validate.Struct(&params); err != nil {
+		msg := "New session workspace not valid"
+		log.WithError(err).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+		respCode = http.StatusBadRequest
+		response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, err.Error())
+		return
+	}
+
+	// Apply the new workspace assignment (the DOCKER-only check happens in the core)
+	if dbErr := h.core.UpdateSessionWorkspaceName(
+		r.Context(), sessionName, params.WorkspaceName,
+	); dbErr != nil {
+		var validation goutils.ValidationError
+		var unknownSession goutils.NotFoundError
+		var consistency goutils.ConsistencyError
+		switch {
+		case errors.As(dbErr, &validation):
+			msg := "New session workspace not valid"
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+			respCode = http.StatusBadRequest
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		case errors.As(dbErr, &unknownSession):
+			msg := "No session '" + sessionName + "' found"
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+			respCode = http.StatusNotFound
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		case errors.As(dbErr, &consistency):
+			msg := "Session '" + sessionName + "' is not in a state allowing this change"
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+			respCode = http.StatusConflict
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		default:
+			msg := "Failed to update workspace for session '" + sessionName + "'"
+			log.WithError(dbErr).WithFields(goutils.UpdateCodePositionInTags(logTags)).Error(msg)
+			respCode = http.StatusInternalServerError
+			response = h.GetStdRESTErrorMsg(r.Context(), respCode, msg, dbErr.Error())
+		}
 		return
 	}
 
