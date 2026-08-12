@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	mockGoutils "github.com/alwitt/goutils/mocks/goutils"
+	mockRedis "github.com/alwitt/goutils/mocks/redis"
 	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	mockdb "github.com/alwitt/rest-pty/mocks/db"
@@ -26,8 +28,8 @@ type runnerTestMocks struct {
 	persistence  *mockdb.Client
 	database     *mockdb.Database
 	driver       *mocksession.Driver
-	redisClient  *mocktest.RedisClientForTest
-	worker       *mocktest.TaskProcessorForTest
+	redisClient  *mockRedis.Client
+	worker       *mockGoutils.TaskProcessor
 	dummyManager *mocktest.ForTextSessionManager
 }
 
@@ -37,8 +39,8 @@ func newRunnerTestMocks(t *testing.T) *runnerTestMocks {
 		persistence:  mockdb.NewClient(t),
 		database:     mockdb.NewDatabase(t),
 		driver:       mocksession.NewDriver(t),
-		redisClient:  mocktest.NewRedisClientForTest(t),
-		worker:       mocktest.NewTaskProcessorForTest(t),
+		redisClient:  mockRedis.NewClient(t),
+		worker:       mockGoutils.NewTaskProcessor(t),
 		dummyManager: mocktest.NewForTextSessionManager(t),
 	}
 }
@@ -662,7 +664,7 @@ func TestSessionRunnerHandleSubmitCommands(t *testing.T) {
 			utCtx, t, buildSession(models.SessionRunnerModeTypeCommanded, models.SessionStateReady),
 		)
 
-		ringBuf := mocktest.NewRedisBufferForTest(t)
+		ringBuf := mockRedis.NewRingBuffer(t)
 		m.redisClient.EXPECT().
 			GetRingBuffer(mock.Anything, session.BuildSessionInputBufferName(sessionID), int64(16384)).
 			Return(ringBuf, nil)
@@ -693,7 +695,7 @@ func TestSessionRunnerHandleSubmitCommands(t *testing.T) {
 			utCtx, t, buildSession(models.SessionRunnerModeTypeCommanded, models.SessionStateReady),
 		)
 
-		ringBuf := mocktest.NewRedisBufferForTest(t)
+		ringBuf := mockRedis.NewRingBuffer(t)
 		m.redisClient.EXPECT().
 			GetRingBuffer(mock.Anything, session.BuildSessionInputBufferName(sessionID), int64(16384)).
 			Return(ringBuf, nil)
@@ -1221,7 +1223,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1257,7 +1259,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 		// Non-blocking StopSession only enqueues; the caller does not await the result
 		m.worker.EXPECT().Submit(mock.Anything, mock.Anything).Return(nil)
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1282,7 +1284,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			Submit(mock.Anything, mock.Anything).
 			Return(fmt.Errorf("submit boom"))
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1345,7 +1347,7 @@ func TestSessionRunnerHandleIPCRequestStopSession(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1416,7 +1418,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1455,7 +1457,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			Submit(mock.Anything, mock.Anything).
 			Return(fmt.Errorf("submit boom"))
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)
@@ -1518,7 +1520,7 @@ func TestSessionRunnerHandleIPCRequestSubmitCommand(t *testing.T) {
 			}).
 			Return(nil)
 
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		respQueue := mockRedis.NewQueue(t)
 		m.redisClient.EXPECT().
 			GetQueueHandle(mock.Anything, session.BuildSessionIPCRespQueueName(requestID)).
 			Return(respQueue, nil)

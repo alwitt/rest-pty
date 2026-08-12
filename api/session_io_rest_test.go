@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/alwitt/goutils"
+	mockRedis "github.com/alwitt/goutils/mocks/redis"
 	"github.com/alwitt/rest-pty/api"
 	"github.com/alwitt/rest-pty/db"
 	mockdb "github.com/alwitt/rest-pty/mocks/db"
-	mocktest "github.com/alwitt/rest-pty/mocks/test"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/apex/log"
 	"github.com/gorilla/mux"
@@ -28,7 +28,7 @@ import (
 type sessionIOTestMocks struct {
 	persistence *mockdb.Client
 	database    *mockdb.Database
-	redis       *mocktest.RedisClientForTest
+	redis       *mockRedis.Client
 }
 
 // newSessionIOTestMocks construct a fresh set of session IO mock collaborators bound to `t`.
@@ -36,7 +36,7 @@ func newSessionIOTestMocks(t *testing.T) *sessionIOTestMocks {
 	return &sessionIOTestMocks{
 		persistence: mockdb.NewClient(t),
 		database:    mockdb.NewDatabase(t),
-		redis:       mocktest.NewRedisClientForTest(t),
+		redis:       mockRedis.NewClient(t),
 	}
 }
 
@@ -132,8 +132,8 @@ func TestSessionIOHandlerSubmitUserCommand(t *testing.T) {
 		(prefix "req.") yields `runnerResp`.
 	*/
 	expectIPCRoundTrip := func(mocks *sessionIOTestMocks, runnerResp models.IPCMessageEnvelope) {
-		reqQueue := mocktest.NewRedisQueueForTest(t)
-		respQueue := mocktest.NewRedisQueueForTest(t)
+		reqQueue := mockRedis.NewQueue(t)
+		respQueue := mockRedis.NewQueue(t)
 
 		mocks.redis.EXPECT().
 			GetQueueHandle(mock.Anything, mock.MatchedBy(func(name string) bool {
@@ -389,7 +389,7 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 			Once()
 
 		payload := []byte("hello world")
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -435,7 +435,7 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
 			Once()
 
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -595,7 +595,7 @@ func TestSessionIOHandlerReadSessionOutputChunk(t *testing.T) {
 			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
 			Once()
 
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -641,7 +641,7 @@ func TestSessionIOHandlerReadSessionOutputNewest(t *testing.T) {
 			Once()
 
 		payload := []byte("hello world")
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -687,7 +687,7 @@ func TestSessionIOHandlerReadSessionOutputNewest(t *testing.T) {
 			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
 			Once()
 
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -809,7 +809,7 @@ func TestSessionIOHandlerReadSessionOutputNewest(t *testing.T) {
 			Return(ioSampleSession("test-session", models.SessionStateReady), nil).
 			Once()
 
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -886,7 +886,7 @@ func TestSessionIOHandlerTailSessionOutput(t *testing.T) {
 		chunkB := []byte("second")
 		reader := &scriptedReadWriteCloser{chunks: [][]byte{chunkA, chunkB}}
 
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).
@@ -930,7 +930,7 @@ func TestSessionIOHandlerTailSessionOutput(t *testing.T) {
 			Once()
 
 		reader := &scriptedReadWriteCloser{}
-		buffer := mocktest.NewRedisBufferForTest(t)
+		buffer := mockRedis.NewRingBuffer(t)
 		testMocks.redis.EXPECT().
 			GetRingBuffer(mock.Anything, mock.Anything, int64(16384)).
 			Return(buffer, nil).

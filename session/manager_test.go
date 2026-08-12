@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/alwitt/goutils"
+	mockGoutils "github.com/alwitt/goutils/mocks/goutils"
+	mockRedis "github.com/alwitt/goutils/mocks/redis"
 	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	mockdb "github.com/alwitt/rest-pty/mocks/db"
 	mocksession "github.com/alwitt/rest-pty/mocks/session"
-	mocktest "github.com/alwitt/rest-pty/mocks/test"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
 	"github.com/apex/log"
@@ -24,8 +25,8 @@ import (
 type managerTestMocks struct {
 	persistence *mockdb.Client
 	database    *mockdb.Database
-	redisClient *mocktest.RedisClientForTest
-	worker      *mocktest.TaskProcessorForTest
+	redisClient *mockRedis.Client
+	worker      *mockGoutils.TaskProcessor
 	runner      *mocksession.Runner
 
 	// runnerFactoryErr when set, the runner factory fails with this error instead of returning
@@ -38,8 +39,8 @@ func newManagerTestMocks(t *testing.T) *managerTestMocks {
 	return &managerTestMocks{
 		persistence: mockdb.NewClient(t),
 		database:    mockdb.NewDatabase(t),
-		redisClient: mocktest.NewRedisClientForTest(t),
-		worker:      mocktest.NewTaskProcessorForTest(t),
+		redisClient: mockRedis.NewClient(t),
+		worker:      mockGoutils.NewTaskProcessor(t),
 		runner:      mocksession.NewRunner(t),
 	}
 }
