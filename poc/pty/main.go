@@ -139,9 +139,7 @@ func prepareDockerSession(session *models.Session) {
 			HostIP:        "127.0.0.1",
 		}},
 	}
-	driverMetadataStr, _ := json.Marshal(&models.SessionDriverDockerParams{
-		DockerRuntimeParams: driverMeta,
-	})
+	driverMetadataStr, _ := json.Marshal(&driverMeta)
 	session.DriverMetadata = datatypes.JSON(driverMetadataStr)
 }
 

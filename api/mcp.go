@@ -70,20 +70,18 @@ type MCPDockerDriverSettings struct {
 // mounts, no-new-privileges, etc.).
 func (s MCPDockerDriverSettings) ToDriverParams() models.SessionDriverDockerParams {
 	return models.SessionDriverDockerParams{
-		DockerRuntimeParams: goutilsRuntime.DockerRuntimeParams{
-			ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{
-				Image:        s.Image,
-				WorkingDir:   s.WorkingDir,
-				WritableDirs: s.WritableDirs,
-				ExtraHosts:   s.ExtraHosts,
-				Environment:  s.Environment,
-				Streaming: goutils.GetTypedPtr(goutilsRuntime.StreamIOParams{
-					DisplayRows: s.DisplayRows, DisplayCols: s.DisplayCols,
-				}),
-			},
-			NetworkMode:  s.NetworkMode,
-			PublishPorts: s.PublishPorts,
+		ContainerRuntimeParams: goutilsRuntime.ContainerRuntimeParams{
+			Image:        s.Image,
+			WorkingDir:   s.WorkingDir,
+			WritableDirs: s.WritableDirs,
+			ExtraHosts:   s.ExtraHosts,
+			Environment:  s.Environment,
+			Streaming: goutils.GetTypedPtr(goutilsRuntime.StreamIOParams{
+				DisplayRows: s.DisplayRows, DisplayCols: s.DisplayCols,
+			}),
 		},
+		NetworkMode:  s.NetworkMode,
+		PublishPorts: s.PublishPorts,
 	}
 }
 

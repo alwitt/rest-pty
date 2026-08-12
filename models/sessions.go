@@ -162,9 +162,7 @@ type SessionDriverPTYParams struct {
 // default (read-only rootfs, all capabilities dropped, no-new-privileges) and isolated from
 // the network. Sessions that need to accept inbound connections must select a routable
 // NetworkMode and declare PublishPorts.
-type SessionDriverDockerParams struct {
-	goutilsRuntime.DockerRuntimeParams
-}
+type SessionDriverDockerParams goutilsRuntime.DockerRuntimeParams
 
 // ValidNextState verify the session can transition to new state
 func (s Session) ValidNextState(newState SessionStateENUMType) error {

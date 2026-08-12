@@ -73,7 +73,7 @@ func newDockerCoreDriver(
 	core, err := goutilsRuntime.NewDockerSystemCallRuntime(
 		workingCtx, instance.containerName(), goutilsRuntime.ContainerCommand{
 			Entrypoint: []string{session.Command.Command}, Commands: session.Command.Arguments,
-		}, castMeta.DockerRuntimeParams, false,
+		}, goutilsRuntime.DockerRuntimeParams(castMeta), false,
 	)
 	if err != nil {
 		return nil, goutils.NewRuntimeError("failed to define core runtime operator", err, true)
