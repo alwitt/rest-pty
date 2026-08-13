@@ -58,6 +58,9 @@ BuildHTTPServer create server to host session CRUD and IO endpoints
 	@param persistence db.Client - DB persistence layer
 	@param redisClient goutilsRedis.Client - redis client
 	@param manager session.Manager - session manager
+	@param cairnEnabled bool - whether the cairn integration is configured on this deployment.
+	    Only consumed by the MCP server instructions; the API layer never talks to cairn itself,
+	    since a session's workspace is resolved by its driver at start.
 	@param metrics goutils.HTTPRequestMetricHelper - metric collection agent
 	@returns HTTP server instance
 */
@@ -66,6 +69,7 @@ func BuildHTTPServer(
 	persistence db.Client,
 	redisClient goutilsRedis.Client,
 	manager session.Manager,
+	cairnEnabled bool,
 	metrics goutils.HTTPRequestMetricHelper,
 ) (*http.Server, error) {
 	livenessAPI := NewLivenessHandler(persistence, httpCfg.APIs.RequestLogging, metrics)
@@ -173,8 +177,16 @@ func BuildHTTPServer(
 			return nil, goutils.NewRuntimeError("Failed to define MCP API handler", err, true)
 		}
 
-		// Build MCP server
-		mcpServer := mcp.NewServer(&mcp.Implementation{Name: "rest-pty", Version: "0.2.0"}, nil)
+		// Build MCP server.
+		//
+		// The instructions explain what a session is and how to drive one - the shape of the
+		// interaction, which no single tool description can carry. The workspace section is
+		// included only when cairn is configured: without it every session naming a workspace
+		// refuses to start, so advertising them would be actively misleading.
+		mcpServer := mcp.NewServer(
+			&mcp.Implementation{Name: "rest-pty", Version: "0.3.1"},
+			&mcp.ServerOptions{Instructions: serverInstructions(cairnEnabled)},
+		)
 		if err := mcpAPI.RegisterTools(mcpServer); err != nil {
 			return nil, goutils.NewRuntimeError("Failed to register MCP tools", err, true)
 		}

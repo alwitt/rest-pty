@@ -15,6 +15,7 @@ import (
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/models"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/oklog/ulid/v2"
 )
@@ -63,14 +64,21 @@ type coreDriver interface {
 }
 
 // prepareCoreDriver setup the core session driver
+//
+// `cairnClient` is only consumed by the docker driver, and only when the session carries a
+// workspace: a PTY session runs directly against the host filesystem, so there is no container
+// to mount a workspace volume into, and the model rejects a workspace on one.
 func prepareCoreDriver(
-	workingCtx context.Context, instanceID string, session models.Session,
+	workingCtx context.Context,
+	instanceID string,
+	session models.Session,
+	cairnClient workspace.CairnClient,
 ) (coreDriver, error) {
 	switch session.DriverType {
 	case models.SessionDriverTypePTY:
 		return newPTYCoreDriver(workingCtx, instanceID, session)
 	case models.SessionDriverTypeDocker:
-		return newDockerCoreDriver(workingCtx, instanceID, session)
+		return newDockerCoreDriver(workingCtx, instanceID, session, cairnClient)
 	default:
 		return nil, goutils.NewConsistencyError(
 			"Unknown session driver type "+string(session.DriverType), nil, true,
@@ -93,6 +101,10 @@ type driverImpl struct {
 
 	instanceID string
 
+	// cairnClient client used to resolve the session's workspace against cairn; nil when the
+	// deployment did not configure the integration
+	cairnClient workspace.CairnClient
+
 	lock *sync.Mutex
 	core coreDriver
 
@@ -108,6 +120,7 @@ type driverFactoryFunc func(
 	session models.Session,
 	redisClient goutilsRedis.Client,
 	commandStopNotify func(),
+	cairnClient workspace.CairnClient,
 ) (Driver, error)
 
 /*
@@ -122,6 +135,8 @@ this callback MUST NOT directly trigger call to driver `Stop`.
 	@param redisClient goutilsRedis.Client - the REDIS client
 	@param commandStopNotify func() - callback function to trigger when session command stopped
 	    before driver `Stop` is called.
+	@param cairnClient workspace.CairnClient - client used to resolve the session's workspace
+	    against cairn; nil when the deployment did not configure the integration
 	@returns the new driver
 */
 func NewDriver(
@@ -129,6 +144,7 @@ func NewDriver(
 	session models.Session,
 	redisClient goutilsRedis.Client,
 	commandStopNotify func(),
+	cairnClient workspace.CairnClient,
 ) (Driver, error) {
 	instanceID := ulid.Make().String()
 
@@ -150,6 +166,7 @@ func NewDriver(
 		wg:                sync.WaitGroup{},
 		session:           session,
 		redisClient:       redisClient,
+		cairnClient:       cairnClient,
 		instanceID:        instanceID,
 		core:              nil,
 		lock:              &sync.Mutex{},
@@ -247,7 +264,7 @@ func (r *driverImpl) Start(parentCtx context.Context) error {
 	// ------------------------------------------------------------------------------------
 	// Start the core driver
 
-	core, err := prepareCoreDriver(r.workingCtx, r.instanceID, r.session)
+	core, err := prepareCoreDriver(r.workingCtx, r.instanceID, r.session, r.cairnClient)
 	if err != nil {
 		r.workingCtxCancel()
 		return goutils.NewRuntimeError(

@@ -13,6 +13,7 @@ import (
 	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
 	"github.com/oklog/ulid/v2"
@@ -152,6 +153,13 @@ type NewSessionRunnerParams struct {
 	// DriverFactory session driver factory function
 	DriverFactory driverFactoryFunc `validate:"required"`
 
+	// CairnClient client used to resolve the session's workspace against cairn.
+	//
+	// Deliberately NOT `required`: nil is the ordinary state of a deployment that did not
+	// enable the cairn integration, and marking it required would fail every session start
+	// on all of them.
+	CairnClient workspace.CairnClient
+
 	// WorkerFactory worker task processor factory function
 	WorkerFactory taskProcessorFactoryFunc `validate:"required"`
 
@@ -248,6 +256,7 @@ func NewSessionRunner(parentCtx context.Context, params NewSessionRunnerParams) 
 					Error("Failed to request stop session")
 			}
 		},
+		params.CairnClient,
 	)
 	if err != nil {
 		return nil, goutils.NewRuntimeError("failed to define session driver", err, true)

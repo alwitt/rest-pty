@@ -3,6 +3,7 @@ package api //revive:disable-line:var-naming
 
 import (
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/alwitt/goutils"
@@ -11,11 +12,122 @@ import (
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// ======================================================================================
+// MCP server instructions
+//
+// A client MAY fold server instructions into the model's system prompt and MAY ignore them
+// entirely, so nothing load-bearing lives in either constant below: every precondition an
+// agent must respect is also stated in the description of the tool that enforces it. What
+// these carry instead is what no single tool description can - the shape of the interaction
+// as a whole, and what a workspace volume is shared with.
+
+// instructionsPreamble the fixed opening section, present on every deployment.
+//
+// What it spends its words on is what a model is least likely to assume correctly, because
+// rest-pty is the opposite of the one-shot tool call an agent is used to: the process outlives
+// the call, submitting input returns no result for what was typed, and the container is
+// read-only unless the session declared otherwise. That last one bites immediately and
+// silently - a program that cannot write its output file just fails, mid-session.
+const instructionsPreamble = `rest-pty gives you a persistent terminal. Each session is a
+long-lived process running inside its own sandboxed container, and you drive it the way a
+person drives a terminal: send keystrokes in, read the screen back. Unlike a one-shot tool
+call, the process keeps running between your calls - its working directory, environment, shell
+state, and whatever program you left in the foreground are all still there the next time you
+look. Use this when a task needs that continuity: an interactive program, a long-running
+process you check on, or a sequence of commands that build on each other.
+
+A typical session:
+  1. define_new_session          - creates it in the IDLE state
+  2. start_session               - IDLE -> READY; the container and process come up
+  3. submit_user_input           - e.g. TEXT "ls -l", then ENTER
+  4. read_session_output_newest  - read back what happened
+  5. repeat 3 and 4 as needed
+  6. stop_session, then delete_session
+
+Input and output are separate, asynchronous operations. Submitting input returns as soon as the
+session accepts the keystrokes, NOT when the program you triggered has finished; there is no
+exit code and no result attached to what you typed. To learn what happened you read the
+session's output, and you may need to read more than once - a slow command is still running
+when your first read comes back. Input is keystrokes, not commands: send TEXT then ENTER to run
+a line, CTRL "C" to interrupt, CTRL "D" for end-of-file. Output comes from a bounded scrollback
+buffer that drops its oldest bytes as new output arrives, so read often enough to keep up, and
+use the returned actual_offset plus read to know where to continue from.
+
+The state a session is in decides what you can do to it. Input and output need a READY session;
+changing a session's own settings - its command, its buffer capacity, its workspace - needs an
+IDLE one, as does deleting it.
+
+The container is deliberately restrictive, and the restriction that surprises people is that
+almost nothing in it is writable. Its root filesystem is read-only, including the default
+working directory, so a program that writes a file will fail unless you declared that path in
+writable_dirs when defining the session. Those directories are memory-backed and, like the rest
+of the container, are destroyed when the session stops - starting it again gives you a fresh
+container, not the one you left. The session also runs as an unprivileged user with no added
+capabilities, and has no network access unless you selected a network mode.
+
+Sessions are named, server-wide state that outlives the process that created them and survives
+restarts. Stopping a session does not delete it: the definition stays, so it can be started
+again. A session you are finished with should be stopped and deleted rather than left behind.`
+
+// instructionsCairn the workspace section, appended only when the cairn integration is
+// enabled. On a deployment without it every session naming a workspace refuses to start, so
+// advertising the capability there would be actively misleading.
+//
+// The mount path is interpolated from the constant so this does not become a second definition
+// of it - cairn owns that path, and this text has to follow it.
+const instructionsCairn = `This deployment is connected to cairn, which provides shared
+workspaces. A workspace is a named space that owns two different places bytes can live: a
+persistent volume, and a set of durable artifacts.
+
+The persistent volume is a real filesystem shared by everything working in that workspace -
+your session, other sessions, and cairn's own file-transfer helpers. Assign a workspace to an
+IDLE session with update_session_workspace, or name one when you define the session, and that
+volume is mounted read-write at ` + workspace.MountPath + ` the next time the session starts.
+That path is the exception to everything said above about the container being disposable: what
+you write there outlives the session and is visible to everything else in the same workspace.
+Everything outside it is still destroyed when the session stops.
+
+An artifact is a named, durable file belonging to a workspace, held in cairn's object store
+rather than on the volume. The volume is scratch and may be reclaimed; the object store is the
+record. So: anything that has to survive must be saved as an artifact. cairn moves bytes
+between the two on request - downloading an artifact writes it into ` + workspace.MountPath + `
+for your session to read, and uploading promotes a file your session produced there into a
+durable artifact. If you also hold cairn's own tools, that is what they are for.
+
+The workspace must already exist and have a provisioned volume. You cannot create either; an
+operator does. A session assigned a workspace that is missing or has no volume refuses to start
+rather than starting without it, so you will not silently lose work you meant to keep there.
+
+One quirk of files cairn placed there for you: a downloaded artifact is owned by root and your
+session cannot write to it. You can read it and you can delete it, but you cannot edit it in
+place - copy it elsewhere, or delete and rewrite it.`
+
+/*
+serverInstructions assemble the server-level instructions returned with the MCP initialize
+result.
+
+Unlike multitool's equivalent there is no operator-authored section: rest-pty has one tool set
+and one purpose, so the only thing that varies is whether workspaces exist on this deployment.
+
+	@param cairnEnabled bool - whether this deployment can resolve workspaces against cairn
+	@returns the assembled instructions
+*/
+func serverInstructions(cairnEnabled bool) string {
+	sections := []string{instructionsPreamble}
+
+	if cairnEnabled {
+		sections = append(sections, instructionsCairn)
+	}
+
+	return strings.Join(sections, "\n\n")
+}
 
 // ======================================================================================
 // MCP tool call parameters

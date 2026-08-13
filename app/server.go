@@ -13,6 +13,7 @@ import (
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm/logger"
@@ -168,6 +169,22 @@ func BuildNewServer(
 	}
 
 	// ------------------------------------------------------------------------------------
+	// Build cairn client
+	//
+	// Optional integration: when it is not enabled the session driver is given a nil client and
+	// a session naming a workspace fails to start. The client is built from parentCtx because an
+	// OAuth-enabled client's token manager refreshes for the process lifetime, not for one
+	// session run.
+
+	var cairnClient workspace.CairnClient
+	if configs.Cairn.Enable {
+		cairnClient, err = workspace.NewCairnClient(parentCtx, configs.Cairn)
+		if err != nil {
+			return nil, models.NewBootStrapError("Failed to create cairn client", err, true)
+		}
+	}
+
+	// ------------------------------------------------------------------------------------
 	// Build core
 
 	// Prepare session manager
@@ -178,6 +195,7 @@ func BuildNewServer(
 		},
 		RedisClient:   redisClient,
 		DriverFactory: session.NewDriver,
+		CairnClient:   cairnClient,
 		WorkerFactory: goutils.GetNewTaskProcessorInstance,
 		RunnerFactory: session.NewSessionRunner,
 	})
@@ -216,7 +234,12 @@ func BuildNewServer(
 	// Build API server
 
 	apiServer, err := api.BuildHTTPServer(
-		configs.API, persistence, redisClient, sessionManager, httpMetricsAgent,
+		configs.API,
+		persistence,
+		redisClient,
+		sessionManager,
+		configs.Cairn.Enable,
+		httpMetricsAgent,
 	)
 	if err != nil {
 		return nil, models.NewBootStrapError("Failed to create API server", err, true)

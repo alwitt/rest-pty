@@ -39,6 +39,8 @@ time.
 - **Hardened-by-default containers** — read-only rootfs, dropped capabilities,
   no-new-privileges, and no network access unless explicitly opted in.
 - **Persistent sessions** — session definitions survive restarts via SQLite.
+- **Shared workspaces** — an optional [`cairn`](https://github.com/alwitt/cairn) workspace volume
+  mounted into a Docker session, so several containers can share artifacts.
 - **Scrollback** — bounded output history backed by Redis ring buffers.
 - **OpenAPI spec** — authoritative schema in [`docs/swagger.yaml`](./docs/swagger.yaml),
   with a generated TypeScript client SDK target.
@@ -173,7 +175,26 @@ redis:
 # SQLite persistence (created automatically)
 sqlite:
   file: ./tmp/rest-pty.db
+
+# cairn integration - OPTIONAL. Omit the whole section to run without it; a session that
+# names a workspace then fails to start (see "Workspaces").
+cairn:
+  enable: true
+  baseURL: http://cairn:38271   # required once enable is true
+  client:                       # required once enable is true
+    retry:
+      maxAttempts: 3
+      initialWaitTimeInSec: 1
+      maxWaitTimeInSec: 5
+    oauth:                      # optional; client-credential flow
+      issuerURL: https://issuer.example.com
+      clientID: rest-pty
+      clientSecret: ...
+      targetAudience: https://cairn.example.com
 ```
+
+> The `cairn` retry budget bounds how long a session start can block on a slow or unreachable
+> `cairn` — the workspace lookup happens inline during `start`, before the container is created.
 
 ### CLI flags
 
@@ -288,6 +309,17 @@ api:
 Once enabled, an MCP server (streamable HTTP transport, stateless) is mounted at
 **`POST /v1/mcp`**, relative to the configured `pathPrefix`.
 
+### Server instructions
+
+The `initialize` result carries server instructions describing what a session is and how to
+drive one — the things no single tool description can carry: that the process outlives the call,
+that submitting input returns no result for what was typed, and that the container is read-only
+apart from the `writable_dirs` a session declares. They are fixed prose and not configurable.
+
+A section explaining workspaces, persistent volumes, and artifacts is appended **only when the
+`cairn` integration is configured**. Without it, every session naming a workspace refuses to
+start, so advertising them would be misleading.
+
 ### Tools
 
 The endpoint registers the following tools. Their input schemas mirror the REST DTOs (and
@@ -393,9 +425,45 @@ time or through `PUT /v1/sessions/{name}/workspace`, and cleared by sending
 no container to mount a workspace volume into. Assigning a workspace to a PTY session is
 rejected, and moving a session onto the PTY driver clears any workspace it was holding.
 
-> **The assignment is currently recorded only.** rest-pty stores and validates the name; it does
-> not yet resolve it against `cairn` or mount the workspace volume, so no files appear in the
-> container as a result of setting it. Mounting lands in a later change.
+The `cairn` integration must be configured (see [Configuration](#config-file)) for a workspace to
+be usable — a session that names one on a server without it will not start.
+
+#### What happens at session start
+
+The workspace name is resolved against `cairn` on **every** `POST /v1/sessions/{name}/start`, so a
+workspace assigned while the session was `IDLE` takes effect on the next run with nothing else to
+do. `cairn`'s persistent volume for that workspace is then mounted **read-write at
+`/mnt/cairn/ws`** inside the session container.
+
+`rest-pty` is a **mount-only** `cairn` client: `cairn` owns the workspace record, the volume, and
+the volume's name. `rest-pty` reads the name `cairn` persisted and mounts the volume `cairn` names,
+at the path `cairn` fixed — it derives none of the three, holds no object-store credentials, and
+cannot create or destroy a workspace or a volume.
+
+Four things make the **session start fail** rather than starting unmounted, since a session that
+asked for a workspace and got a container with nothing mounted would write into a scratch layer
+discarded on exit with no sign anything went wrong:
+
+| Cause | Fix |
+|-------|-----|
+| the `cairn` integration is not configured on this server | enable it, or clear the session's workspace |
+| the lookup against `cairn` failed | check `cairn`'s reachability and the `baseURL` |
+| `cairn` knows no workspace by that name | create it in `cairn`, or correct the name |
+| the workspace's `volume_state` is `NONE` | an operator must provision its volume in `cairn`; `rest-pty` cannot |
+
+#### File ownership inside the volume
+
+The mount root is world-writable, but the files in it are not uniformly owned:
+
+- a file the **session container** creates is owned by `nobody` (`65534:65534`) — the user the
+  hardened container profile runs as;
+- a file **`cairn`'s transfer sidecar** wrote — anything downloaded into the workspace as an
+  artifact — is owned by `root:root`, mode `0644`.
+
+So a downloaded artifact can be read and **unlinked** (removal is governed by write permission on
+the directory), but **not modified in place**: opening it `r+` fails `EACCES`. A session that wants
+to edit one must write to a different path, or unlink and recreate. Nothing on this side can change
+that — `rest-pty` neither writes those files nor controls the sidecar's umask.
 
 ## Development
 

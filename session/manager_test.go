@@ -16,6 +16,7 @@ import (
 	mocksession "github.com/alwitt/rest-pty/mocks/session"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -59,7 +60,11 @@ func (m *managerTestMocks) constructParams(instanceName string) session.NewSessi
 		},
 		RedisClient: m.redisClient,
 		DriverFactory: func(
-			_ context.Context, _ models.Session, _ goutilsRedis.Client, _ func(),
+			_ context.Context,
+			_ models.Session,
+			_ goutilsRedis.Client,
+			_ func(),
+			_ workspace.CairnClient,
 		) (session.Driver, error) {
 			return nil, fmt.Errorf("driver factory should not be called by the manager directly")
 		},

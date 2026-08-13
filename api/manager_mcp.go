@@ -8,6 +8,7 @@ import (
 
 	"github.com/alwitt/goutils"
 	"github.com/alwitt/rest-pty/models"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -21,7 +22,8 @@ func (h MCPHandler) registerDefineNewSessionTool(server *mcp.Server) error {
 		"Define a new session backed by a sandboxed docker container. The session is " +
 			"created in the IDLE state and must be started before it can accept input or produce " +
 			"output. Only docker-backed, hardened sessions can be defined here; host directory " +
-			"mounting and added capabilities are not available."
+			"mounting and added capabilities are not available. When a workspace is named, it is " +
+			"mounted read-write at " + workspace.MountPath + " once the session starts."
 
 	return goutils.MCPAddTool(
 		&h.MCPHandler,
@@ -226,7 +228,9 @@ func (h MCPHandler) registerUpdateSessionWorkspaceTool(server *mcp.Server) error
 	toolName := "update_session_workspace"
 	toolDescription :=
 		"Assign a shared workspace to an IDLE session, so the session can read and write " +
-			"artifacts held in that workspace. Omit the workspace name to clear the assignment."
+			"artifacts held in that workspace. The workspace is mounted read-write at " +
+			workspace.MountPath + " when the session next starts. Omit the workspace name to " +
+			"clear the assignment."
 
 	return goutils.MCPAddTool(
 		&h.MCPHandler,

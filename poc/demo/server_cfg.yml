@@ -18,3 +18,17 @@ redis:
 
 sqlite:
   file: ./tmp/rest-pty.db
+
+# Optional cairn integration. Uncomment and point baseURL at a running cairn to let DOCKER
+# sessions mount workspace volumes at /mnt/cairn/ws.
+#
+# NOTE: `baseURL` and `client` are both required once `enable` is true - there are deliberately
+# no viper defaults under `cairn.*`, so an enabled integration must spell them out.
+# cairn:
+#   enable: true
+#   baseURL: http://127.0.0.1:38271
+#   client:
+#     retry:
+#       maxAttempts: 3
+#       initialWaitTimeInSec: 1
+#       maxWaitTimeInSec: 5

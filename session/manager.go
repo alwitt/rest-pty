@@ -12,6 +12,7 @@ import (
 	goutilsRedis "github.com/alwitt/goutils/redis"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
+	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/go-playground/validator/v10"
 )
@@ -173,6 +174,10 @@ type managerImpl struct {
 	// driverFactory session driver factory function
 	driverFactory driverFactoryFunc
 
+	// cairnClient client used to resolve a session's workspace against cairn; nil when the
+	// deployment did not configure the integration
+	cairnClient workspace.CairnClient
+
 	// worker support task processing inbound requests
 	worker goutils.TaskProcessor
 
@@ -213,6 +218,12 @@ type NewSessionManagerParams struct {
 
 	// DriverFactory session driver factory function
 	DriverFactory driverFactoryFunc `validate:"required"`
+
+	// CairnClient client used to resolve a session's workspace against cairn.
+	//
+	// Deliberately NOT `required`: nil is the ordinary state of a deployment that did not
+	// enable the cairn integration, and marking it required would fail boot for all of them.
+	CairnClient workspace.CairnClient
 
 	// WorkerFactory worker task processor factory function
 	WorkerFactory taskProcessorFactoryFunc `validate:"required"`
@@ -267,6 +278,7 @@ func NewSessionManager(parentCtx context.Context, params NewSessionManagerParams
 		persistenceFactory: params.PersistenceFactory,
 		redisClient:        params.RedisClient,
 		driverFactory:      params.DriverFactory,
+		cairnClient:        params.CairnClient,
 		runnerFactory:      params.RunnerFactory,
 		workerFactory:      params.WorkerFactory,
 	}
@@ -647,6 +659,7 @@ func (r *managerImpl) HandleStartSession(
 		PersistenceFactory: r.persistenceFactory,
 		RedisClient:        r.redisClient,
 		DriverFactory:      r.driverFactory,
+		CairnClient:        r.cairnClient,
 		WorkerFactory:      r.workerFactory,
 		SessionIdleNotify: func() {
 			r.HandleSessionIdleNotify(sessionEntry.Name)

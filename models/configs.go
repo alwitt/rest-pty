@@ -2,6 +2,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/alwitt/goutils"
 	"github.com/spf13/viper"
 )
@@ -98,6 +100,84 @@ type MetricsConfig struct {
 }
 
 // ======================================================================================
+// HTTP Client
+
+// HTTPClientAuthConfig HTTP client OAuth middleware configuration
+//
+// Currently only support client-credential OAuth flow configuration
+type HTTPClientAuthConfig struct {
+	// IssuerURL OpenID provider issuer URL
+	IssuerURL string `mapstructure:"issuerURL" json:"issuerURL" validate:"required,url"`
+	// ClientID OAuth client ID
+	ClientID string `mapstructure:"clientID" json:"clientID" validate:"required"`
+	// ClientSecret OAuth client secret
+	ClientSecret string `mapstructure:"clientSecret" json:"clientSecret" validate:"required"`
+	// TargetAudience target audience `aud` to acquire a token for
+	TargetAudience string `mapstructure:"targetAudience" json:"targetAudience" validate:"required,url"`
+}
+
+// HTTPClientRetryConfig HTTP client config retry configuration
+type HTTPClientRetryConfig struct {
+	// MaxAttempts max number of retry attempts
+	MaxAttempts int `mapstructure:"maxAttempts" json:"maxAttempts" validate:"gte=0"`
+	// InitWaitTimeInSec wait time before the first wait retry
+	InitWaitTimeInSec uint32 `mapstructure:"initialWaitTimeInSec" json:"initialWaitTimeInSec" validate:"gte=1"`
+	// MaxWaitTimeInSec max wait time
+	MaxWaitTimeInSec uint32 `mapstructure:"maxWaitTimeInSec" json:"maxWaitTimeInSec" validate:"gte=1"`
+}
+
+// InitWaitTime convert InitWaitTimeInSec to time.Duration
+func (c HTTPClientRetryConfig) InitWaitTime() time.Duration {
+	return time.Second * time.Duration(c.InitWaitTimeInSec)
+}
+
+// MaxWaitTime convert MaxWaitTimeInSec to time.Duration
+func (c HTTPClientRetryConfig) MaxWaitTime() time.Duration {
+	return time.Second * time.Duration(c.MaxWaitTimeInSec)
+}
+
+// HTTPClientConfig HTTP client config targeting `go-resty`
+//
+// NOTE: neither field carries `dive`. `dive` is for slices and maps; on any other kind the
+// validator panics outright ("dive error! can't dive on a non slice or map"). It is also
+// unnecessary here — a nested struct, and a non-nil pointer to one, are descended into on
+// their own.
+type HTTPClientConfig struct {
+	// OAuth OAuth middleware integration configuration
+	OAuth *HTTPClientAuthConfig `mapstructure:"oauth,omitempty" json:"oauth,omitempty" validate:"omitempty"`
+	// Retry client retry configuration. See https://github.com/go-resty/resty#retries for details
+	Retry HTTPClientRetryConfig `mapstructure:"retry" json:"retry" validate:"required"`
+}
+
+// ======================================================================================
+// cairn
+
+// CairnConfig cairn service integration config.
+//
+// Optional: with Enable false rest-pty serves exactly as it did before cairn existed, and a
+// session naming a workspace fails to start rather than silently running unmounted.
+//
+// BaseURL and Client are pointers so their absence is meaningful, and both are
+// `required_with=Enable` rather than `required`. That is also why nothing may be registered
+// under `cairn.*` in InstallDefaultServerConfigValues: a viper default materializes the key,
+// mapstructure then allocates the pointer, and `required_with` could never fire again.
+type CairnConfig struct {
+	// Enable whether to enable the cairn integration
+	Enable bool `mapstructure:"enable" json:"enable"`
+
+	// BaseURL cairn API server base URL. rest-pty builds its endpoint paths from this.
+	//
+	// `omitempty` is load bearing, not decoration: `required_with` is one of the tags that
+	// runs even against a nil pointer, so when Enable is false it passes and hands off to the
+	// next tag — and `url` panics on any kind that is not a string. `omitempty` is what stops
+	// the chain there.
+	BaseURL *string `mapstructure:"baseURL" json:"baseURL,omitempty" validate:"required_with=Enable,omitempty,url"`
+
+	// Client HTTP client configuration used when connecting to cairn
+	Client *HTTPClientConfig `mapstructure:"client" json:"client,omitempty" validate:"required_with=Enable"`
+}
+
+// ======================================================================================
 // REDIS
 
 // RedisConnectionConfig connection parameter to Redis server
@@ -135,12 +215,23 @@ type ApplicationConfig struct {
 
 	// Redis connection parameter
 	Redis RedisConnectionConfig `mapstructure:"redis" json:"redis" validate:"required"`
+
+	// Cairn cairn service integration config.
+	//
+	// Deliberately not `required`: that means "not the zero value", and a CairnConfig with
+	// Enable false and both pointers nil IS the zero value - which is the ordinary
+	// cairn-disabled deployment, not an invalid one.
+	Cairn CairnConfig `mapstructure:"cairn" json:"cairn"`
 }
 
 // ======================================================================================
 // Default Configuration Setter
 
 // InstallDefaultServerConfigValues setup default server configs
+//
+// NOTE: nothing may be registered under `cairn.*` here. A viper default materializes the key,
+// mapstructure then allocates CairnConfig's pointers, and the `required_with=Enable` tags on
+// them could never fire again.
 func InstallDefaultServerConfigValues() {
 	// Default metrics config
 	viper.SetDefault("metrics.metricsEndpoint", "/metrics")

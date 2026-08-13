@@ -177,11 +177,12 @@ func SessionDriverPoC(sessionType models.SessionDriverTypeENUMType) error {
 		return goutils.NewRuntimeError("unsupported session driver "+string(sessionType), nil, true)
 	}
 
-	// Define the driver
+	// Define the driver. No cairn client: this demo never assigns a workspace, and a nil client
+	// is the ordinary state of a deployment without the integration.
 	uut, err := session.NewDriver(ctx, shellSession, redisClient, func() {
 		log.Info("Core command ended on its own; shutting down")
 		ctxCancel()
-	})
+	}, nil)
 	if err != nil {
 		return goutils.NewRuntimeError("failed to define session driver", err, true)
 	}
