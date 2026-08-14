@@ -4,7 +4,7 @@
         "description": "REST API Wrapper Around PTY",
         "title": "rest-pty",
         "contact": {},
-        "version": "v0.3.0"
+        "version": "v0.3.1"
     },
     "host": "localhost:38281",
     "basePath": "/",

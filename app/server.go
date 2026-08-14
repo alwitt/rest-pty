@@ -16,6 +16,7 @@ import (
 	"github.com/alwitt/rest-pty/workspace"
 	"github.com/apex/log"
 	"github.com/oklog/ulid/v2"
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
@@ -149,23 +150,48 @@ func BuildNewServer(
 	// ------------------------------------------------------------------------------------
 	// Build persistence client
 
+	isSqlite := false
+
+	var sqlConnect gorm.Dialector
+	switch {
+	case configs.Persistence.SQLite != nil && configs.Persistence.Postgres == nil:
+		isSqlite = true
+		sqlConnect = db.GetSqliteDialector(configs.Persistence.SQLite.DBFile)
+
+	case configs.Persistence.SQLite == nil && configs.Persistence.Postgres != nil:
+		var err error
+		sqlConnect, err = db.GetPostgresDialector(*configs.Persistence.Postgres)
+		if err != nil {
+			return nil, models.NewBootStrapError("Failed to define Postgres connection string", err, true)
+		}
+
+	default:
+		return nil, models.NewBootStrapError(
+			"Application must use either SQLite or Postgres", nil, true,
+		)
+	}
+
+	// Prepare persistence
+	persistence, err := db.NewConnection(sqlConnect, logger.Error)
+	if err != nil {
+		return nil, models.NewBootStrapError("Failed to prepare DB persistence client", err, true)
+	}
+
+	if isSqlite {
+		// Setup the SQLite DB file
+		if err := persistence.RunSQLInTransaction(parentCtx, db.DefineTables); err != nil {
+			return nil, models.NewBootStrapError("DB migration failed", err, true)
+		}
+	}
+
+	// ------------------------------------------------------------------------------------
 	// Prepare redis client
+
 	redisClient, err := goutilsRedis.NewClient(parentCtx, goutilsRedis.ConnectionConfig{
 		Host: configs.Redis.Host, Port: configs.Redis.Port, DBNumber: configs.Redis.DBNumber,
 	})
 	if err != nil {
 		return nil, models.NewBootStrapError("Failed to define REDIS client", err, true)
-	}
-
-	// Prepare persistence
-	persistence, err := db.NewConnection(db.GetSqliteDialector(configs.SQLite.DBFile), logger.Error)
-	if err != nil {
-		return nil, models.NewBootStrapError("Failed to prepare DB persistence client", err, true)
-	}
-
-	// Setup the SQLite DB file
-	if err := persistence.RunSQLInTransaction(parentCtx, db.DefineTables); err != nil {
-		return nil, models.NewBootStrapError("DB migration failed", err, true)
 	}
 
 	// ------------------------------------------------------------------------------------
@@ -191,7 +217,7 @@ func BuildNewServer(
 	sessionManager, err := session.NewSessionManager(parentCtx, session.NewSessionManagerParams{
 		InstanceName: ulid.Make().String(),
 		PersistenceFactory: func() (db.Client, error) {
-			return db.NewConnection(db.GetSqliteDialector(configs.SQLite.DBFile), logger.Error)
+			return db.NewConnection(sqlConnect, logger.Error)
 		},
 		RedisClient:   redisClient,
 		DriverFactory: session.NewDriver,

@@ -9,7 +9,6 @@ import (
 
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
-	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/session"
@@ -124,7 +123,7 @@ func (c SessionIOCore) SubmitUserCommandToSession(
 	// ------------------------------------------------------------------------------------
 	// Wait for response
 
-	resp, err := respQueue.PopLeft(ctx, true, common.GetTypedPtr(time.Second*60))
+	resp, err := respQueue.PopLeft(ctx, true, goutils.GetTypedPtr(time.Second*60))
 	if err != nil {
 		return goutils.NewRuntimeError(
 			"failed to receive response from session '"+sessionName+"' runner via IPC", err, true,

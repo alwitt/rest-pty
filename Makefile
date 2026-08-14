@@ -63,7 +63,7 @@ docker: lint ## Build application docker image for local dev
 	docker build \
 		--load \
 		-t "alwitt/rest-pty:latest" \
-		-f Dockerfile .
+		-f docker/Dockerfile.rest-pty .
 
 .PHONY: up
 up: .prepare ## Start docker compose development stack
@@ -73,9 +73,21 @@ up: .prepare ## Start docker compose development stack
 down: .prepare ## Stop docker compose development stack
 	docker compose -f docker/docker-compose.yml down
 
+.PHONY: gen-migrate
+gen-migrate: ## Define new database migration
+	atlas migrate diff \
+	  --env gorm \
+	  --format '{{ sql . "  " }}'
+
+.PHONY: dev-migrate
+dev-migrate: ## Test apply database migration to DEV Postgres
+	atlas migrate apply \
+	  --env gorm \
+	  --url "postgres://postgres:postgres@localhost:4432/postgres?search_path=public&sslmode=disable"
+
 .PHONY: api
 api: build ## Run local dev API server
-	./rest-pty -l info server -c poc/demo/server_cfg.yml
+	./rest-pty -l info server -c poc/demo/server_cfg.yml --sql-pw postgres
 
 .prepare: ## Prepare the project for local development
 	@pip3 install pre-commit

@@ -10,7 +10,6 @@ import (
 
 	"github.com/alwitt/goutils"
 	goutilsRedis "github.com/alwitt/goutils/redis"
-	"github.com/alwitt/rest-pty/common"
 	"github.com/alwitt/rest-pty/db"
 	"github.com/alwitt/rest-pty/models"
 	"github.com/alwitt/rest-pty/workspace"
@@ -860,7 +859,7 @@ func (r *runnerImpl) HandleIPCRequestMessage(newMessage models.IPCMessageEnvelop
 		}
 		if cmdErr != nil {
 			resp.Success = false
-			resp.ErrorMsg = common.GetTypedPtr(cmdErr.Error())
+			resp.ErrorMsg = goutils.GetTypedPtr(cmdErr.Error())
 		}
 		return resp
 	}

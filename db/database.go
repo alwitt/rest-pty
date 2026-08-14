@@ -252,5 +252,5 @@ func newDatabase(
 
 // Ready check whether the DB connection is working
 func (d *databaseImpl) Ready() error {
-	return d.db.Find(&[]sessionEntry{}).Limit(1).Error
+	return d.db.Find(&[]SessionEntry{}).Limit(1).Error
 }

@@ -2,12 +2,12 @@ package db
 
 import "github.com/alwitt/rest-pty/models"
 
-// sessionEntry user DB entry
-type sessionEntry struct {
+// SessionEntry user DB entry
+type SessionEntry struct {
 	models.Session
 }
 
 // TableName hard code table name
-func (sessionEntry) TableName() string {
+func (SessionEntry) TableName() string {
 	return "sessions"
 }

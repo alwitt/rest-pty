@@ -1,5 +1,19 @@
 services:
 
+  rest-pty-db:
+    container_name: rest-pty-db
+    restart: always
+    hostname: "postgres"
+    image: "postgres:18"
+    ports:
+      - 127.0.0.1:4432:5432
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    networks:
+      - rest_pty
+
   rest-pty-redis:
     container_name: rest-pty-redis
     restart: unless-stopped

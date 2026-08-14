@@ -307,8 +307,10 @@ def _collect_docker_metadata(rows, cols):
 
     metadata = {
         "image": image,
-        "display_rows": rows,
-        "display_cols": cols,
+        "streaming": {
+            "display_rows": rows,
+            "display_cols": cols,
+        },
         "network_mode": "bridge",
     }
     if publish_ports:

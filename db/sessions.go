@@ -58,7 +58,7 @@ func (d *databaseImpl) DefineNewSession(
 
 	driverMetadataStr, _ := json.Marshal(&driverParams)
 
-	newEntry := sessionEntry{
+	newEntry := SessionEntry{
 		Session: models.Session{
 			ID:                   ulid.Make().String(),
 			Name:                 name,
@@ -87,16 +87,16 @@ func (d *databaseImpl) DefineNewSession(
 }
 
 // getSessionEntryByName helper function to get a session by name
-func (d *databaseImpl) getSessionEntryByName(name string) (sessionEntry, error) {
-	var entry sessionEntry
-	tmp := d.db.Model(&sessionEntry{}).Where("name = ?", name).First(&entry)
+func (d *databaseImpl) getSessionEntryByName(name string) (SessionEntry, error) {
+	var entry SessionEntry
+	tmp := d.db.Model(&SessionEntry{}).Where("name = ?", name).First(&entry)
 
 	if tmp.Error != nil {
 		if errors.Is(tmp.Error, gorm.ErrRecordNotFound) {
-			return sessionEntry{},
+			return SessionEntry{},
 				goutils.NewNotFoundError("session '"+name+"' is unknown", tmp.Error, true)
 		}
-		return sessionEntry{},
+		return SessionEntry{},
 			models.NewPersistenceError("failed to fetch session '"+name+"'", tmp.Error, true)
 	}
 
@@ -135,7 +135,7 @@ func (d *databaseImpl) updateSessionState(
 		)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", session.ID).Update("state", newState)
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", session.ID).Update("state", newState)
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+session.Name+"'["+session.ID+"] new state", tmp.Error, true,
@@ -202,7 +202,7 @@ func (d *databaseImpl) UpdateSessionOutputBufCapacity(
 		return goutils.NewValidationError("new session "+name+" capacity is invalid", err, true)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("io_buf_cap", newCap)
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", entry.ID).Update("io_buf_cap", newCap)
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new IO capacity", tmp.Error, true,
@@ -243,7 +243,7 @@ func (d *databaseImpl) UpdateSessionRunMode(
 		return goutils.NewValidationError("new session "+name+" runner mode is invalid", err, true)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("runner_mode", newMode)
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", entry.ID).Update("runner_mode", newMode)
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new runner mode", tmp.Error, true,
@@ -284,7 +284,7 @@ func (d *databaseImpl) UpdateSessionCommand(
 		return goutils.NewValidationError(" new session "+name+" command is invalid", err, true)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("command", newCommand)
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", entry.ID).Update("command", newCommand)
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new command", tmp.Error, true,
@@ -352,7 +352,7 @@ func (d *databaseImpl) UpdateSessionDriver(
 		return goutils.NewValidationError(" new session "+name+" driver params is invalid", err, true)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).
+	tmp := d.db.Model(&SessionEntry{}).
 		Where("id = ?", entry.ID).
 		// A map, not a struct: GORM's struct path skips zero values, so a struct here would
 		// silently fail to clear workspace_name and leave a PTY session holding a workspace.
@@ -391,7 +391,7 @@ func (d *databaseImpl) UpdateSessionName(_ context.Context, name string, newName
 		return goutils.NewValidationError("new session name is invalid", err, true)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Update("name", newName)
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", entry.ID).Update("name", newName)
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to record session '"+entry.Name+"'["+entry.ID+"] new name", tmp.Error, true,
@@ -419,7 +419,7 @@ func (d *databaseImpl) UpdateSessionDescription(
 	}
 
 	tmp := d.db.
-		Model(&sessionEntry{}).
+		Model(&SessionEntry{}).
 		Where("id = ?", entry.ID).
 		Update("description", newDescription)
 	if tmp.Error != nil {
@@ -471,7 +471,7 @@ func (d *databaseImpl) UpdateSessionWorkspaceName(
 	}
 
 	tmp := d.db.
-		Model(&sessionEntry{}).
+		Model(&SessionEntry{}).
 		Where("id = ?", entry.ID).
 		Update("workspace_name", newWorkspaceName)
 	if tmp.Error != nil {
@@ -505,7 +505,7 @@ func (d *databaseImpl) DeleteSession(_ context.Context, name string) error {
 		)
 	}
 
-	tmp := d.db.Model(&sessionEntry{}).Where("id = ?", entry.ID).Delete(&sessionEntry{})
+	tmp := d.db.Model(&SessionEntry{}).Where("id = ?", entry.ID).Delete(&SessionEntry{})
 	if tmp.Error != nil {
 		return models.NewPersistenceError(
 			"failed to delete session '"+entry.Name+"'["+entry.ID+"]", tmp.Error, true,
@@ -530,7 +530,7 @@ func (d *databaseImpl) ListSessions(
 		return nil, goutils.NewValidationError("session query filter is invalid", err, true)
 	}
 
-	query := d.db.Model(&sessionEntry{})
+	query := d.db.Model(&SessionEntry{})
 
 	if filters.SimilarName != nil {
 		query = query.Where("name like ?", "%"+*filters.SimilarName+"%")
@@ -558,7 +558,7 @@ func (d *databaseImpl) ListSessions(
 		query = query.Order("created_at " + orderDirection)
 	}
 
-	var entries []sessionEntry
+	var entries []SessionEntry
 	if tmp := query.Find(&entries); tmp.Error != nil {
 		return nil, models.NewPersistenceError("failed to list sessions", tmp.Error, true)
 	}

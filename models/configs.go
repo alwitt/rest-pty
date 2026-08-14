@@ -199,6 +199,41 @@ type SQLiteConfig struct {
 	DBFile string `mapstructure:"file" json:"file" validate:"required"`
 }
 
+// PostgresSSLConfig Postgres connection SSL config
+type PostgresSSLConfig struct {
+	// Enabled whether to enable SSL when connecting to Postgres
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+	// CAFile the CA cert file to challenge remote with
+	CAFile *string `mapstructure:"caFile" json:"caFile,omitempty" validate:"omitempty,file"`
+}
+
+// PostgresConfig Postgres connection config
+type PostgresConfig struct {
+	// DebugLog whether to output ORM layer debug logs
+	DebugLog bool `mapstructure:"debugLog" json:"debugLog"`
+	// Host Postgres server host
+	Host string `mapstructure:"host" json:"host" validate:"required"`
+	// Port Postgres server port
+	Port uint16 `mapstructure:"port" json:"port" validate:"lte=65535,gte=0"`
+	// Database the specific database to use
+	Database string `mapstructure:"db" json:"db" validate:"required"`
+	// User the user to connect with
+	User string `mapstructure:"user" json:"user" validate:"required"`
+	// Password the user password
+	Password *string `json:"-" validate:"-"`
+	// SSL the connection SSL settings
+	SSL PostgresSSLConfig `mapstructure:"ssl" json:"ssl" validate:"required"`
+}
+
+// PersistenceConfig application persistence config
+type PersistenceConfig struct {
+	// SQLite persistence config
+	SQLite *SQLiteConfig `mapstructure:"sqlite,omitempty" json:"sqlite,omitempty" validate:"required_without=Postgres"`
+
+	// Postgres persistence config
+	Postgres *PostgresConfig `mapstructure:"postgres,omitempty" json:"postgres,omitempty" validate:"required_without=SQLite"`
+}
+
 // ======================================================================================
 // Application Config
 
@@ -210,8 +245,8 @@ type ApplicationConfig struct {
 	// API server config
 	API APIServerConfig `mapstructure:"api" json:"api" validate:"required"`
 
-	// SQLite persistence config
-	SQLite SQLiteConfig `mapstructure:"sqlite" json:"sqlite" validate:"required"`
+	// Persistence application persistence config
+	Persistence PersistenceConfig `mapstructure:"persistence" json:"persistence" validate:"required"`
 
 	// Redis connection parameter
 	Redis RedisConnectionConfig `mapstructure:"redis" json:"redis" validate:"required"`

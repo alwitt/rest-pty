@@ -12,19 +12,32 @@ permissions:
 
 jobs:
   publish:
+    name: publish (${{ matrix.image }})
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: alwitt/rest-pty-migration
+            context: ./
+            file: docker/Dockerfile.migration
+            platforms: linux/amd64
+          - image: alwitt/rest-pty
+            context: ./
+            file: docker/Dockerfile.rest-pty
+            platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: |
-            alwitt/rest-pty
+          images: ${{ matrix.image }}
           tags: |
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
@@ -44,8 +57,9 @@ jobs:
       - name: Build image and push to Docker Hub
         uses: docker/build-push-action@v7
         with:
-          context: ./
+          context: ${{ matrix.context }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platforms }}
           push: true

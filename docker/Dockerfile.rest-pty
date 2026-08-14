@@ -6,7 +6,6 @@ COPY ./go.mod /app/go.mod
 COPY ./go.sum /app/go.sum
 COPY ./api /app/api
 COPY ./app /app/app
-COPY ./common /app/common
 COPY ./db /app/db
 COPY ./models /app/models
 COPY ./session /app/session

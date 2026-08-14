@@ -6,18 +6,32 @@ metrics:
 
 api:
   apis:
+    requestLogging:
+      logLevel: warn
+      healthLogLevel: debug
+      logRequestPayload: false
     enableMCP: true
   service:
     listenOn: 127.0.0.1
     appPort: 38281
 
+persistence:
+  # Use sqlite as persistence store
+  # sqlite:
+  #   file: ./tmp/rest-pty.db
+
+  # Use Postgres as persistence store
+  postgres:
+    debugLog: false
+    host: 127.0.0.1
+    port: 4432
+    db: postgres
+    user: postgres
+
 redis:
   host: 127.0.0.1
   port: 6479
   dbNumber: 0
-
-sqlite:
-  file: ./tmp/rest-pty.db
 
 # Optional cairn integration. Uncomment and point baseURL at a running cairn to let DOCKER
 # sessions mount workspace volumes at /mnt/cairn/ws.
@@ -26,7 +40,7 @@ sqlite:
 # no viper defaults under `cairn.*`, so an enabled integration must spell them out.
 # cairn:
 #   enable: true
-#   baseURL: http://127.0.0.1:38271
+#   baseURL: http://127.0.0.1:44123
 #   client:
 #     retry:
 #       maxAttempts: 3

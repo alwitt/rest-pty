@@ -20,6 +20,9 @@ import (
 
 type serverArgs struct {
 	ConfigFile string `validate:"required,file"`
+
+	// SQLPassword when using Postgres as persistence, the database use password.
+	SQLPassword string
 }
 
 type cliArgs struct {
@@ -35,7 +38,7 @@ var svrArgs serverArgs
 var logTags log.Fields
 
 // @title rest-pty
-// @version v0.3.0
+// @version v0.3.1
 // @description REST API Wrapper Around PTY
 // @host localhost:38281
 // @BasePath /
@@ -53,7 +56,7 @@ func main() {
 	}
 
 	app := &cli.App{
-		Version:     "v0.3.0",
+		Version:     "v0.3.1",
 		Usage:       "application entrypoint",
 		Description: "REST API wrapper around PTY running custom commands",
 		Flags: []cli.Flag{
@@ -94,6 +97,16 @@ func main() {
 						EnvVars:     []string{"CONFIG_FILE"},
 						Destination: &svrArgs.ConfigFile,
 						Required:    true,
+					},
+					// Postgres SQL persistence password
+					&cli.StringFlag{
+						Name:        "sql-pw",
+						Usage:       "Postgres SQL persistence user password",
+						EnvVars:     []string{"SQL_PASSWORD"},
+						Destination: &svrArgs.SQLPassword,
+						Value:       "",
+						DefaultText: "",
+						Required:    false,
 					},
 				},
 				Action: runApplicationServer,
@@ -180,6 +193,12 @@ func runApplicationServer(ctx *cli.Context) error {
 				Error("Server config content not valid")
 			return err
 		}
+
+		// If going with Postgres as persistence
+		if configs.Persistence.Postgres != nil {
+			configs.Persistence.Postgres.Password = &svrArgs.SQLPassword
+		}
+
 		if err := validate.Struct(&configs); err != nil {
 			log.
 				WithError(err).
