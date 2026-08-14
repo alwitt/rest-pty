@@ -9,6 +9,7 @@ COPY ./app /app/app
 COPY ./db /app/db
 COPY ./models /app/models
 COPY ./session /app/session
+COPY ./workspace /app/workspace
 COPY ./main.go /app/main.go
 RUN cd /app && \
     CGO_ENABLED=1 go build -o rest-pty . && \
