@@ -18,6 +18,7 @@ Examples:
 import base64
 import ipaddress
 import json
+import os
 import re
 import sys
 
@@ -173,8 +174,9 @@ SERVER_DEFAULT_RUN_AS_GROUP = "nogroup"
 # Server-side defaults for the omitted docker memory settings (goutils runtime/common.go).
 SERVER_DEFAULT_MEM_RESERVATION = "32m"
 SERVER_DEFAULT_MEM_LIMIT = "128m"
-# Server-side default size of a writable dir when size_limit is omitted (8 MiB).
-SERVER_DEFAULT_WRITABLE_DIR_SIZE = 8388608
+# CLI default size_limit for a writable dir given without a size (8 MiB). Always sent explicitly;
+# the server's own default when the field is omitted is 64 MiB.
+DEFAULT_WRITABLE_DIR_SIZE = 8388608
 # Where a cairn workspace volume is mounted inside a DOCKER session container (workspace/client.go).
 WORKSPACE_MOUNT_PATH = "/mnt/cairn/ws"
 
@@ -187,6 +189,11 @@ _NETWORK_MODE_CUSTOM = "__custom__"
 
 # Linux capability names as docker accepts them (e.g. NET_RAW), after CAP_ prefix stripping.
 CAPABILITY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+# POSIX portable environment variable name. A deliberate CLI-side restriction - the server only
+# requires the name to be non-empty - that catches 'FOO BAR=1'-style typos without excluding
+# anything a shell could reference.
+ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # A memory size as the server's parser accepts it: a number with an optional binary unit suffix
 # (k/m/g/t/p), where the trailing 'b' or 'ib' is optional - "128m", "1.5GiB", "512" are all valid.
@@ -394,7 +401,8 @@ def _parse_writable_dir(entry):
     """Parse a 'PATH[:SIZE]' entry into a writable_dirs element.
 
     The path is an in-container directory backed by a memory-backed writable mount (tmpfs) and
-    must be absolute. An omitted size leaves size_limit out so the server default applies.
+    must be absolute. An omitted size falls back to DEFAULT_WRITABLE_DIR_SIZE; size_limit is
+    always sent explicitly.
 
     Raises ValueError with a human message on malformed input.
     """
@@ -411,8 +419,7 @@ def _parse_writable_dir(entry):
         # Unlike the memory limits, which stay strings on the wire, size_limit is a byte count.
         writable_dir["size_limit"] = _memory_to_bytes(_parse_memory_size(parts[1]))
     else:
-        # Apply default
-        writable_dir["size_limit"] = SERVER_DEFAULT_WRITABLE_DIR_SIZE
+        writable_dir["size_limit"] = DEFAULT_WRITABLE_DIR_SIZE
     return writable_dir
 
 
@@ -422,6 +429,48 @@ def _render_writable_dir(writable_dir):
     if writable_dir.get("size_limit"):
         text += f":{_format_bytes(writable_dir['size_limit'])}"
     return text
+
+
+def _parse_env_var(entry):
+    """Parse a 'NAME=VALUE' entry into an environment element.
+
+    Follows the docker `-e` shape: the split is on the first '=' only, so a value may itself
+    contain '='; 'NAME=' sets an empty value; a bare 'NAME' copies the value from the shell
+    running this CLI, so a secret can be passed without typing it at the prompt.
+
+    Raises ValueError with a human message on malformed input, including a bare NAME that is
+    not set in this shell - a typo must never silently become an empty variable.
+    """
+    name, sep, value = entry.partition("=")
+    name = name.strip()
+    if not ENV_VAR_NAME_RE.match(name):
+        raise ValueError(f"invalid environment variable name '{name}' (expected e.g. HTTP_PROXY)")
+
+    if not sep:
+        if name not in os.environ:
+            raise ValueError(f"'{name}' is not set in this shell (use {name}=VALUE to set it)")
+        value = os.environ[name]
+    return {"name": name, "value": value}
+
+
+def _render_env_var(var):
+    """One-line summary of an environment element in the same 'NAME=VALUE' shape."""
+    return f"{var['name']}={var.get('value', '')}"
+
+
+def _dedupe_env_vars(entries):
+    """Collapse repeated environment names, last one wins, keeping first-seen order.
+
+    On update the natural way to change a variable is to keep the current list and type the
+    new assignment; without this both entries would be sent and which one the process sees is
+    left to docker. Each override is echoed so it does not happen silently.
+    """
+    by_name = {}
+    for var in entries:
+        if var["name"] in by_name:
+            click.echo(f"  {var['name']}: overriding earlier value")
+        by_name[var["name"]] = var
+    return list(by_name.values())
 
 
 def _parse_capability(entry):
@@ -546,10 +595,11 @@ def create_session(ctx):
 
     Walks through the common session fields, then the driver selection. The
     PTY driver needs nothing further; the Docker driver additionally collects
-    the container image, the run-as user/group, the memory reservation and
-    limit, memory-backed writable dirs, capabilities to add back, host bind
-    mounts, the network mode (and, when routable, the interfaces/ports to
-    publish), and an optional cairn workspace to mount at /mnt/cairn/ws.
+    the container image, the run-as user/group, environment variables, the
+    memory reservation and limit, memory-backed writable dirs, capabilities to
+    add back, host bind mounts, the network mode (and, when routable, the
+    interfaces/ports to publish), and an optional cairn workspace to mount at
+    /mnt/cairn/ws.
     """
     try:
         _create_session_interactive(ctx)
@@ -658,14 +708,15 @@ def _collect_driver(current_driver=None, current_metadata=None):
 def _collect_docker_metadata(rows, cols, current=None):
     """Collect docker-driver metadata interactively.
 
-    Collects the image, run-as user/group, memory reservation and limit, memory-backed writable
-    dirs, added capabilities, host bind mounts, network mode and - when the mode can accept
-    inbound connections - the interfaces/ports to publish (the container port matches the
-    published host port). Fields left blank are omitted so the server defaults apply.
+    Collects the image, run-as user/group, environment variables, memory reservation and limit,
+    memory-backed writable dirs, added capabilities, host bind mounts, network mode and - when
+    the mode can accept inbound connections - the interfaces/ports to publish (the container
+    port matches the published host port). Fields left blank are omitted so the server defaults
+    apply.
 
     `current` is the existing driver metadata when updating a session. The result starts as a
     copy of it and only the keys this function manages are set or removed, so parameters the
-    CLI does not expose (environment, volume_mounts, extra_hosts, ...) survive the
+    CLI does not expose (volume_mounts, extra_hosts, working_dir, ...) survive the
     full-replacement driver update.
     """
     metadata = dict(current or {})
@@ -693,6 +744,23 @@ def _collect_docker_metadata(rows, cols, current=None):
         _prompt_optional(
             f"Run As Group [Default {SERVER_DEFAULT_RUN_AS_GROUP}]: ",
             metadata.get("run_as_group"),
+        ),
+    )
+
+    # Environment variables are set on top of the image's own ENV; the request wins on overlap.
+    click.echo(
+        "Environment variables use NAME=VALUE; a bare NAME copies the value from this shell"
+    )
+    _set_or_drop(
+        metadata,
+        "environment",
+        _dedupe_env_vars(
+            _collect_entries(
+                "environment variables",
+                metadata.get("environment"),
+                _parse_env_var,
+                _render_env_var,
+            )
         ),
     )
 
@@ -727,7 +795,7 @@ def _collect_docker_metadata(rows, cols, current=None):
     )
     click.echo(
         "Writable dirs use PATH[:SIZE], e.g. /scratch:256m "
-        f"(default {_format_bytes(SERVER_DEFAULT_WRITABLE_DIR_SIZE)})"
+        f"(default {_format_bytes(DEFAULT_WRITABLE_DIR_SIZE)})"
     )
     _set_or_drop(
         metadata,
