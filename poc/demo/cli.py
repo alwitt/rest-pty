@@ -170,6 +170,11 @@ DEFAULT_DOCKER_IMAGE = "rest-pty-helper:latest"
 # the prompts; the CLI omits the field so the server default applies rather than sending these.
 SERVER_DEFAULT_RUN_AS_USER = "nobody"
 SERVER_DEFAULT_RUN_AS_GROUP = "nogroup"
+# Server-side defaults for the omitted docker memory settings (goutils runtime/common.go).
+SERVER_DEFAULT_MEM_RESERVATION = "32m"
+SERVER_DEFAULT_MEM_LIMIT = "128m"
+# Server-side default size of a writable dir when size_limit is omitted (8 MiB).
+SERVER_DEFAULT_WRITABLE_DIR_SIZE = 8388608
 # Where a cairn workspace volume is mounted inside a DOCKER session container (workspace/client.go).
 WORKSPACE_MOUNT_PATH = "/mnt/cairn/ws"
 
@@ -182,6 +187,21 @@ _NETWORK_MODE_CUSTOM = "__custom__"
 
 # Linux capability names as docker accepts them (e.g. NET_RAW), after CAP_ prefix stripping.
 CAPABILITY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+# A memory size as the server's parser accepts it: a number with an optional binary unit suffix
+# (k/m/g/t/p), where the trailing 'b' or 'ib' is optional - "128m", "1.5GiB", "512" are all valid.
+# Mirrors goutils' use of docker go-units RAMInBytes (runtime/docker.go), but is deliberately a
+# touch stricter (that parser also tolerates oddities like a bare ".5"); anything accepted here is
+# accepted by the server.
+MEMORY_SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([kmgtp](?:i?b)?|b)?$", re.IGNORECASE)
+# Binary multipliers keyed by the unit letter, matching RAMInBytes' binaryMap.
+MEMORY_UNIT_MULTIPLIERS = {
+    "k": 1024,
+    "m": 1024**2,
+    "g": 1024**3,
+    "t": 1024**4,
+    "p": 1024**5,
+}
 
 # Mirrors the server's session_name_type rule (models/validate.go): alphanumeric and '-'.
 SESSION_NAME_RE = re.compile(r"^[a-zA-Z0-9-]+$")
@@ -333,6 +353,77 @@ def _render_host_mount(mount):
     return text
 
 
+def _parse_memory_size(entry):
+    """Validate a memory size string, returning it unchanged.
+
+    The server stores these verbatim and only parses them when the container starts, so a typo
+    would otherwise surface as a failed `session start` rather than a rejected create/update.
+
+    Raises ValueError with a human message on malformed input.
+    """
+    text = entry.strip()
+    if not MEMORY_SIZE_RE.match(text):
+        raise ValueError(f"invalid memory size '{entry}' (expected e.g. 128m, 1.5g or 512)")
+    return text
+
+
+def _memory_to_bytes(entry):
+    """Resolve a memory size string to bytes, mirroring the server's binary multipliers.
+
+    Assumes `entry` already passed _parse_memory_size.
+    """
+    number, unit = MEMORY_SIZE_RE.match(entry.strip()).groups()
+    multiplier = MEMORY_UNIT_MULTIPLIERS.get(unit[0].lower(), 1) if unit else 1
+    return int(float(number) * multiplier)
+
+
+def _format_bytes(count):
+    """Render a byte count as a compact binary size, e.g. 268435456 -> '256m'.
+
+    Only exact multiples of a unit are abbreviated; anything else renders as the raw count, so
+    the result always round-trips back through _parse_memory_size / _memory_to_bytes.
+    """
+    for unit in ("p", "t", "g", "m", "k"):
+        multiplier = MEMORY_UNIT_MULTIPLIERS[unit]
+        if count >= multiplier and count % multiplier == 0:
+            return f"{count // multiplier}{unit}"
+    return str(count)
+
+
+def _parse_writable_dir(entry):
+    """Parse a 'PATH[:SIZE]' entry into a writable_dirs element.
+
+    The path is an in-container directory backed by a memory-backed writable mount (tmpfs) and
+    must be absolute. An omitted size leaves size_limit out so the server default applies.
+
+    Raises ValueError with a human message on malformed input.
+    """
+    parts = entry.split(":")
+    if len(parts) > 2:
+        raise ValueError("expected 'PATH[:SIZE]', e.g. /scratch:256m")
+
+    path = parts[0]
+    if not path.startswith("/"):
+        raise ValueError(f"writable dir path '{path}' must be absolute")
+    writable_dir = {"path": path}
+
+    if len(parts) == 2:
+        # Unlike the memory limits, which stay strings on the wire, size_limit is a byte count.
+        writable_dir["size_limit"] = _memory_to_bytes(_parse_memory_size(parts[1]))
+    else:
+        # Apply default
+        writable_dir["size_limit"] = SERVER_DEFAULT_WRITABLE_DIR_SIZE
+    return writable_dir
+
+
+def _render_writable_dir(writable_dir):
+    """One-line summary of a writable_dirs element in the same 'PATH[:SIZE]' shape."""
+    text = writable_dir["path"]
+    if writable_dir.get("size_limit"):
+        text += f":{_format_bytes(writable_dir['size_limit'])}"
+    return text
+
+
 def _parse_capability(entry):
     """Normalise a Linux capability name for add_caps: upper-case, without the CAP_ prefix.
 
@@ -356,6 +447,23 @@ def _prompt_optional(message, current=None):
     """
     text = prompt(message, default=current or "").strip()
     return text or None
+
+
+def _prompt_memory(message, current=None):
+    """Prompt for an optional memory size, re-prompting until it is well-formed.
+
+    Returns None on a blank entry so the caller can omit the field and let the server default
+    apply.
+    """
+    while True:
+        text = _prompt_optional(message, current)
+        if text is None:
+            return None
+        try:
+            return _parse_memory_size(text)
+        except ValueError as exc:
+            click.echo(f"  {exc}", err=True)
+            current = text
 
 
 def _collect_entries(label, current, parse, render):
@@ -438,8 +546,9 @@ def create_session(ctx):
 
     Walks through the common session fields, then the driver selection. The
     PTY driver needs nothing further; the Docker driver additionally collects
-    the container image, the run-as user/group, capabilities to add back, host
-    bind mounts, the network mode (and, when routable, the interfaces/ports to
+    the container image, the run-as user/group, the memory reservation and
+    limit, memory-backed writable dirs, capabilities to add back, host bind
+    mounts, the network mode (and, when routable, the interfaces/ports to
     publish), and an optional cairn workspace to mount at /mnt/cairn/ws.
     """
     try:
@@ -549,14 +658,14 @@ def _collect_driver(current_driver=None, current_metadata=None):
 def _collect_docker_metadata(rows, cols, current=None):
     """Collect docker-driver metadata interactively.
 
-    Collects the image, run-as user/group, added capabilities, host bind mounts, network mode
-    and - when the mode can accept inbound connections - the interfaces/ports to publish (the
-    container port matches the published host port). Fields left blank are omitted so the
-    server defaults apply.
+    Collects the image, run-as user/group, memory reservation and limit, memory-backed writable
+    dirs, added capabilities, host bind mounts, network mode and - when the mode can accept
+    inbound connections - the interfaces/ports to publish (the container port matches the
+    published host port). Fields left blank are omitted so the server defaults apply.
 
     `current` is the existing driver metadata when updating a session. The result starts as a
     copy of it and only the keys this function manages are set or removed, so parameters the
-    CLI does not expose (memory limits, capabilities, environment, ...) survive the
+    CLI does not expose (environment, volume_mounts, extra_hosts, ...) survive the
     full-replacement driver update.
     """
     metadata = dict(current or {})
@@ -584,6 +693,50 @@ def _collect_docker_metadata(rows, cols, current=None):
         _prompt_optional(
             f"Run As Group [Default {SERVER_DEFAULT_RUN_AS_GROUP}]: ",
             metadata.get("run_as_group"),
+        ),
+    )
+
+    # Memory: a soft reservation the container starts with and a hard limit it cannot exceed.
+    mem_reservation = _prompt_memory(
+        f"Starting Memory (soft reservation) [Default {SERVER_DEFAULT_MEM_RESERVATION}]: ",
+        metadata.get("mem_reservation"),
+    )
+    _set_or_drop(metadata, "mem_reservation", mem_reservation)
+    mem_limit = _prompt_memory(
+        f"Max Memory (hard limit) [Default {SERVER_DEFAULT_MEM_LIMIT}]: ",
+        metadata.get("mem_limit"),
+    )
+    _set_or_drop(metadata, "mem_limit", mem_limit)
+    # Docker refuses to start a container whose reservation exceeds its limit; flag it here
+    # rather than letting the session fail at start.
+    if (
+        mem_reservation
+        and mem_limit
+        and _memory_to_bytes(mem_reservation) > _memory_to_bytes(mem_limit)
+    ):
+        click.echo(
+            f"  warning: starting memory {mem_reservation} exceeds the max {mem_limit}; "
+            "docker will refuse to start this container",
+            err=True,
+        )
+
+    # Writable dirs are overlaid on the otherwise read-only rootfs.
+    click.echo(
+        "Writable dirs are memory-backed (tmpfs): their contents are lost when the session "
+        "stops, and they count against the container's memory"
+    )
+    click.echo(
+        "Writable dirs use PATH[:SIZE], e.g. /scratch:256m "
+        f"(default {_format_bytes(SERVER_DEFAULT_WRITABLE_DIR_SIZE)})"
+    )
+    _set_or_drop(
+        metadata,
+        "writable_dirs",
+        _collect_entries(
+            "writable dirs",
+            metadata.get("writable_dirs"),
+            _parse_writable_dir,
+            _render_writable_dir,
         ),
     )
 
